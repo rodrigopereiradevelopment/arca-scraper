@@ -18,21 +18,22 @@ class GoodBomScraper(BaseScraper):
         print(f"🔍 Acessando GoodBom: {self.url_teste}")
         
         db = self.conectar()
-        if db is None: return
+        if db is None: 
+            return
 
-       headers = {
+        # CORREÇÃO AQUI: 8 espaços (2 níveis de 4)
+        headers = {
             'User-Agent': 'ARCA-TCC-Project (contato: rodrigopereira.development@gmail.com)'
         }
         
         try:
-            # --- PARTE QUE FALTAVA: FAZER O DOWNLOAD ---
+            # CORREÇÃO AQUI: 12 espaços (3 níveis de 4)
             resposta = requests.get(self.url_teste, headers=headers, timeout=10)
             if resposta.status_code != 200:
                 print(f"❌ Erro HTTP: {resposta.status_code}")
                 return
             
             soup = BeautifulSoup(resposta.text, 'html.parser')
-            # -------------------------------------------
 
             # NOME
             nome_tag = soup.find('span', class_='product-name') or soup.find('h1')

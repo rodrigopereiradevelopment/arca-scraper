@@ -1,38 +1,52 @@
-from scrapers.base_scraper import BaseScraper
+import json
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
+from scrapers.base_scraper import BaseScraper
 
 class SaoVicenteScraper(BaseScraper):
     def scrape(self, url):
         db = self.conectar()
-        if not db: return
+        if db is None: return
 
         headers = {
-            'User-Agent': 'ARCA-TCC-Project (contato: rodrigopereira.development@gmail.com)'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'pt-BR,pt;q=0.9'
         }
-
+        
         try:
-            response = requests.get(url, headers=headers, timeout=10)
+            response = requests.get(url, headers=headers, timeout=15)
             soup = BeautifulSoup(response.text, 'html.parser')
+            nome, preco, id_sku = "N/A", 0.0, url.split('-')[-1].replace('/p', '')
 
-            # 1. Nome: Está dentro de um <h3> com a classe 'product-detail__title'
-            nome = soup.find('h3', class_='product-detail__title').text.strip()
-            
-            # 2. Preço: O valor de R$ 16,99 está em um <span> com classe 'productPrice'
-            preco_tag = soup.find('span', class_='productPrice', attrs={'data-v-169ba803': True})
-            # Se a busca por classe falhar, buscamos o texto que contém "R$"
-            preco_raw = preco_tag.text if preco_tag else soup.find(string=lambda t: 'R$' in t)
-            
-            preco = float(preco_raw.replace('R$', '').replace(',', '.').strip())
+            # ESTRATÉGIA: Procurar no Script JSON-LD (O favorito do Google)
+            scripts = soup.find_all('script', type='application/ld+json')
+            for s in scripts:
+                try:
+                    dados = json.loads(s.string)
+                    # O JSON-LD pode ser um dicionário ou uma lista
+                    if isinstance(dados, list): dados = dados[0]
+                    
+                    if 'name' in dados:
+                        nome = dados['name']
+                    
+                    if 'offers' in dados:
+                        offers = dados['offers']
+                        # Às vezes o preço está em 'price' ou 'lowPrice'
+                        p = offers.get('price') or offers.get('lowPrice')
+                        if p: preco = float(str(p).replace(',', '.'))
+                        break # Se achou o preço, para de procurar nos scripts
+                except:
+                    continue
 
-            # 3. Marca: Está dentro do <p> com classe 'product-detail__brand'
-            marca = soup.find('p', class_='product-detail__brand').find('span').text.strip()
+            # FALLBACK: Se o JSON falhar, tenta pegar o Título da página
+            if nome == "N/A":
+                nome = soup.title.text.split('|')[0].strip() if soup.title else "N/A"
 
             produto = {
-                "id_origem": url.split('-')[-1].split('.')[0], # Pega o ID 915491 da URL
+                "id_origem": id_sku,
                 "nome": nome,
-                "marca": marca,
                 "preco": preco,
                 "mercado": "São Vicente",
                 "unidade": "Mogi Mirim",
@@ -42,12 +56,12 @@ class SaoVicenteScraper(BaseScraper):
             }
 
             self.salvar_dados("precos_crus", [produto])
-            print(f"✅ SÃO VICENTE: {nome} - R$ {preco} salvo!")
+            print(f"✅ SÃO VICENTE: {nome} - R$ {preco} capturado com sucesso!")
 
         except Exception as e:
             print(f"❌ Erro São Vicente: {e}")
 
 if __name__ == "__main__":
-    url_teste = "https://www.svicente.com.br/arroz-tipo-1-são-pedro-agulhinha-pacote-5kg-915491.html"
+    url_teste = "https://www.svicente.com.br/arroz-tipo-1-agulhinha-camil-5kg/p"
     scraper = SaoVicenteScraper()
     scraper.scrape(url_teste)
