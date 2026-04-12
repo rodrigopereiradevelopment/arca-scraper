@@ -1,56 +1,74 @@
-from scrapers.base_scraper import BaseScraper
-import requests
-from bs4 import BeautifulSoup
+import re
+from playwright.sync_api import sync_playwright
 from datetime import datetime
+from scrapers.base_scraper import BaseScraper
 
 class PagueMenosScraper(BaseScraper):
     def scrape(self, url):
         db = self.conectar()
-        if not db: return
+        if db is None: return
 
-        headers = {
-            'User-Agent': 'ARCA-TCC-Project (contato: rodrigopereira.development@gmail.com)'
-        }
+        with sync_playwright() as p:
+            # Headless=False para você ver se ele pede o CEP
+            browser = p.chromium.launch(headless=False)
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+            )
+            page = context.new_page()
 
-        try:
-            response = requests.get(url, headers=headers, timeout=10)
-            soup = BeautifulSoup(response.text, 'html.parser')
+            try:
+                print(f"🌐 Acessando Pague Menos: {url}")
+                page.goto(url, wait_until="networkidle", timeout=60000)
 
-            # 1. Nome: Usando o atributo itemprop="name" que aparece no seu print
-            nome = soup.find('h1', attrs={'itemprop': 'name'}).text.strip()
-            
-            # 2. Preço: O Pague Menos usa <meta itemprop="price">. 
-            # Isso é ótimo porque o valor já vem limpo (ex: 14.99)
-            preco_tag = soup.find('meta', attrs={'itemprop': 'price'})
-            preco = float(preco_tag['content']) if preco_tag else 0.0
+                # --- TRATAMENTO DE CEP (VTEX) ---
+                print("📍 Verificando se pede CEP...")
+                page.wait_for_timeout(3000)
+                
+                # Se aparecer o campo de CEP, a gente preenche
+                # (Ajuste os seletores se o modal de CEP aparecer na sua tela)
+                try:
+                    input_cep = page.locator('input[placeholder*="CEP"], #ship-postalCode').first
+                    if input_cep.is_visible():
+                        input_cep.fill("13800202")
+                        page.keyboard.press("Enter")
+                        print("✅ CEP 13800-202 inserido!")
+                        page.wait_for_timeout(3000)
+                except:
+                    pass
 
-            # 3. Marca: Também tem seu próprio itemprop
-            marca_tag = soup.find('meta', attrs={'itemprop': 'brand'})
-            marca = marca_tag['content'] if marca_tag else "N/A"
+                # --- EXTRAÇÃO (USANDO O SEU F12) ---
+                print("💰 Extraindo dados...")
+                
+                # Nome do produto (usando o itemprop="name" que costuma ter na VTEX)
+                nome = page.locator('h1').inner_text().strip()
 
-            # 4. ID (SKU): Fundamental para o seu banco
-            sku_tag = soup.find('meta', attrs={'itemprop': 'sku'})
-            sku = sku_tag['content'] if sku_tag else url.split('-')[-1].replace('/p', '')
+                # Preço: Vamos direto no meta itemprop="price" que você achou!
+                # Ele é o mais preciso de todos.
+                preco_raw = page.locator('meta[itemprop="price"]').get_attribute('content')
+                preco = float(preco_raw) if preco_raw else 0.0
 
-            produto = {
-                "id_origem": sku,
-                "nome": nome,
-                "marca": marca,
-                "preco": preco,
-                "mercado": "Pague Menos",
-                "unidade": "Mogi Mirim",
-                "url_produto": url,
-                "data_extracao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "status": "cru"
-            }
+                produto = {
+                    "id_origem": url.split('/')[-2], # Pega o slug do produto
+                    "nome": nome,
+                    "preco": preco,
+                    "mercado": "Pague Menos",
+                    "unidade": "Mogi Mirim",
+                    "url_produto": url,
+                    "data_extracao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "status": "cru"
+                }
 
-            self.salvar_dados("precos_crus", [produto])
-            print(f"✅ PAGUE MENOS: {nome} - R$ {preco} (OFERTA!)")
+                self.salvar_dados("precos_crus", [produto])
+                print(f"🚀 SUCESSO PAGUE MENOS: {nome} | R$ {preco}")
 
-        except Exception as e:
-            print(f"❌ Erro Pague Menos: {e}")
+            except Exception as e:
+                print(f"❌ Erro no Pague Menos: {e}")
+                page.screenshot(path="erro_paguemenos.png")
+            finally:
+                browser.close()
 
 if __name__ == "__main__":
+    # Link que você mandou
     url_teste = "https://www.superpaguemenos.com.br/arroz-raroz-tipo-1-5kg/p"
     scraper = PagueMenosScraper()
     scraper.scrape(url_teste)

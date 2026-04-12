@@ -1,6 +1,6 @@
+import re
 import json
-import requests
-from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
 from datetime import datetime
 from scrapers.base_scraper import BaseScraper
 
@@ -9,72 +9,73 @@ class AtacadaoScraper(BaseScraper):
         db = self.conectar()
         if db is None: return
 
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7'
-        }
-        
-        try:
-            response = requests.get(url, headers=headers, timeout=15)
-            soup = BeautifulSoup(response.text, 'html.parser')
+        with sync_playwright() as p:
+            # Mantemos visível para acompanhar a limpeza da tela
+            browser = p.chromium.launch(headless=False) 
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+            )
+            page = context.new_page()
 
-            nome, preco, id_sku = "N/A", 0.0, "N/A"
-            p_info = {} 
+            try:
+                print(f"🌐 Acessando: {url}")
+                page.goto(url, wait_until="networkidle", timeout=60000)
 
-            # ESTRATÉGIA 1: Tentar extrair do script de dados do Next.js
-            next_data = soup.find('script', id='__NEXT_DATA__')
-            if next_data:
+                # --- LIMPA-TRILHOS (BASEADO NO SEU HTML) ---
+                print("🧹 Limpando obstáculos...")
+                page.wait_for_timeout(2000)
                 try:
-                    dados = json.loads(next_data.string)
-                    props = dados.get('props', {}).get('pageProps', {})
-                    p_info = props.get('product') or props.get('initialState', {}).get('product', {})
+                    # Seletor exato para o link que você mandou no HTML
+                    btn_cookies = page.locator('a[role="button"]:has-text("Aceitar todos")')
+                    if btn_cookies.is_visible():
+                        btn_cookies.click()
+                        print("✅ Botão de cookies clicado!")
                     
-                    if p_info:
-                        nome = p_info.get('productName', nome)
-                        id_sku = p_info.get('productReference', id_sku)
-                        items = p_info.get('items', [])
-                        if items:
-                            sellers = items[0].get('sellers', [])
-                            if sellers:
-                                comm_data = sellers[0].get('commertialOffer', {})
-                                preco = comm_data.get('Price') or comm_data.get('ListPrice') or 0.0
-                except Exception as json_err:
-                    print(f"⚠️ Erro ao processar JSON interno: {json_err}")
+                    # Fecha o modal de localização (o cinza de Mogi Mirim)
+                    page.keyboard.press("Escape")
+                except:
+                    pass
 
-            # ESTRATÉGIA 2: Plano B (Meta Tags) - Se o JSON falhar ou vier N/A
-            if preco == 0.0 or nome == "N/A":
-                # Busca o Nome
-                meta_nome = soup.find('meta', property='og:title') or \
-                            soup.find('meta', name='twitter:title')
-                if meta_nome:
-                    nome = meta_nome.get('content', nome).split('|')[0].strip()
+                # --- EXTRAÇÃO ---
+                page.wait_for_selector('h1', timeout=15000)
+                nome = page.locator('h1').inner_text().strip()
+                
+                # Captura todos os preços e pega o maior (unitário)
+                print("💰 Extraindo valores...")
+                elementos_preco = page.locator('span:has-text("R$"), div:has-text("R$")').all_inner_texts()
+                
+                valores = []
+                for t in elementos_preco:
+                    match = re.search(r'(\d+,\d+)', t)
+                    if match:
+                        v = float(match.group(1).replace(',', '.'))
+                        if v > 1.0: # Filtra ruídos pequenos
+                            valores.append(v)
 
-                # Busca o Preço
-                if preco == 0.0:
-                    preco_tag = soup.find('meta', property='product:price:amount')
-                    if preco_tag:
-                        try:
-                            preco = float(preco_tag['content'])
-                        except:
-                            pass
+                preco = max(valores) if valores else 0.0
 
-            # Montagem do objeto para o MongoDB
-            produto = {
-                "id_origem": id_sku,
-                "nome": nome,
-                "preco": preco,
-                "mercado": "Atacadão",
-                "unidade": "Mogi Mirim",
-                "url_produto": url,
-                "data_extracao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "status": "cru"
-            }
+                # ID de Origem (Extraindo os números finais da URL)
+                id_match = re.search(r'-([\d-]+)/p', url)
+                id_origem = id_match.group(1) if id_match else "N/A"
 
-            self.salvar_dados("precos_crus", [produto])
-            print(f"✅ ATACADÃO: {nome} - R$ {preco} capturado com sucesso!")
+                produto = {
+                    "id_origem": id_origem,
+                    "nome": nome,
+                    "preco": preco,
+                    "mercado": "Atacadão",
+                    "unidade": "Mogi Mirim",
+                    "url_produto": url,
+                    "data_extracao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "status": "cru"
+                }
 
-        except Exception as e:
-            print(f"❌ Erro geral no Atacadão: {e}")
+                self.salvar_dados("precos_crus", [produto])
+                print(f"🚀 SUCESSO: {nome} | R$ {preco} | ID: {id_origem}")
+
+            except Exception as e:
+                print(f"❌ Erro no Atacadão: {e}")
+            finally:
+                browser.close()
 
 if __name__ == "__main__":
     url_teste = "https://www.atacadao.com.br/arroz-camil-agulhinha---tipo-1-pacote-com-5kg-12658-13743/p"

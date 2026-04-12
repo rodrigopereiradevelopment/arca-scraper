@@ -4,6 +4,7 @@ charset-normalizer==3.4.7
 dnspython==2.8.0
 idna==3.11
 pymongo==4.16.0
+playwright-stealth
 python-dotenv==1.2.2
 requests==2.33.1
 soupsieve==2.8.3
