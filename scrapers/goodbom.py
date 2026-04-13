@@ -1,82 +1,71 @@
-import os
 import requests
-from bs4 import BeautifulSoup
+import re
 from datetime import datetime
 
-# Ajuste para garantir que o Python ache a BaseScraper
-try:
-    from .base_scraper import BaseScraper
-except ImportError:
-    from base_scraper import BaseScraper
-
-class GoodBomScraper(BaseScraper):
+class GoodBomScraper:
     def __init__(self):
-        super().__init__()
-        self.url_teste = "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/produto/m/arroz-tp-1-oliron-5kg-19241"
-
-    def rodar(self):
-        print(f"🔍 Acessando GoodBom: {self.url_teste}")
-        
-        db = self.conectar()
-        if db is None: 
-            return
-
-        # CORREÇÃO AQUI: 8 espaços (2 níveis de 4)
-        headers = {
-            'User-Agent': 'ARCA-TCC-Project (contato: rodrigopereira.development@gmail.com)'
+        self.headers = {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Rsc": "1" 
         }
-        
+
+    def extrair(self, url_produto):
         try:
-            # CORREÇÃO AQUI: 12 espaços (3 níveis de 4)
-            resposta = requests.get(self.url_teste, headers=headers, timeout=10)
-            if resposta.status_code != 200:
-                print(f"❌ Erro HTTP: {resposta.status_code}")
-                return
+            response = requests.get(url_produto, headers=self.headers, timeout=15)
+            response.encoding = 'utf-8'
+            if response.status_code != 200:
+                print(f"⚠️ Erro HTTP {response.status_code} no GoodBom")
+                return None
+
+            texto = response.text
             
-            soup = BeautifulSoup(resposta.text, 'html.parser')
+            # --- EXTRAÇÃO COM REGEX ---
+            id_origem = re.search(r'"code":"(.*?)"', texto)
+            nome = re.search(r'"product":{.*?"name":"(.*?)"', texto)
+            marca = re.search(r'"brand":"(.*?)"', texto)
+            url_img = re.search(r'"image":"(.*?)"', texto)
+            categoria = re.search(r'"category":"(.*?)"', texto)
 
-            # NOME
-            nome_tag = soup.find('span', class_='product-name') or soup.find('h1')
-            nome = nome_tag.text.strip() if nome_tag else "N/A"
+            # --- LÓGICA DE PREÇO PROTEGIDA (O FIX DO AÇÚCAR) ---
+            match_desconto = re.search(r'"priceWithDiscount":\s*([\d.]+)', texto)
+            match_normal = re.search(r'"price":\s*([\d.]+)', texto)
 
-            # PREÇO
-            preco_tag = soup.find('span', class_='BcvAq')
-            preco_valor = 0.0
-            if preco_tag:
-                preco_bruto = preco_tag.text.strip().split('/')[0]
-                preco_valor = float(preco_bruto.replace('R$', '').replace('.', '').replace(',', '.').strip())
+            preco_final = 0.0
+            
+            # Se tem desconto e ele é maior que zero, usa ele
+            if match_desconto and float(match_desconto.group(1)) > 0:
+                preco_final = float(match_desconto.group(1))
+            # Se não, usa o preço normal
+            elif match_normal:
+                preco_final = float(match_normal.group(1))
 
-            # CÓDIGO DO PRODUTO
-            codigo_tag = soup.find(lambda tag: tag.name == "span" and "Código:" in tag.text)
-            codigo = codigo_tag.text.replace('Código: #', '').strip() if codigo_tag else "N/A"
+            # --- TRATAMENTO DE STRING ---
+            nome_limpo = nome.group(1) if nome else "N/A"
+            # Remove escapes de JSON (ex: \u002F para /)
+            nome_limpo = nome_limpo.encode().decode('unicode_escape').upper()
 
-            # MARCA
-            marca_tag = soup.find(lambda tag: tag.name == "span" and "Marca:" in tag.text)
-            marca = marca_tag.text.replace('Marca:', '').strip() if marca_tag else "N/A"
-
-            # IMAGEM
-            img_tag = soup.find('img', class_='product-image') or soup.find('img', alt=nome)
-            url_img = img_tag['src'] if img_tag and img_tag.has_attr('src') else "N/A"
-
-            produto = {
-                "id_origem": codigo,
-                "nome": nome,
-                "marca": marca,
-                "preco": preco_valor,
+            return {
+                "id_origem": id_origem.group(1) if id_origem else "N/A",
+                "nome": nome_limpo,
+                "marca": marca.group(1) if marca else "N/A",
+                "categoria": categoria.group(1).upper() if categoria else "GERAL",
+                "preco": preco_final,
                 "mercado": "GoodBom",
                 "unidade": "Mogi Mirim",
-                "url_imagem": url_img,
-                "url_produto": self.url_teste,
+                "url_imagem": url_img.group(1) if url_img else "N/A",
+                "url_produto": url_produto,
                 "data_extracao": datetime.now().isoformat(),
                 "status": "raw"
             }
 
-            print(f"✅ CAPTURA COMPLETA: {nome} | Código: {codigo} | Marca: {marca}")
-            self.salvar_dados("precos_crus", [produto])
-
         except Exception as e:
-            print(f"❌ Erro na extração detalhada: {e}")
+            print(f"❌ Erro no Scraper GoodBom: {e}")
+            return None
 
 if __name__ == "__main__":
+    # Teste rápido com o Açúcar União (que estava vindo zero)
+    url_teste = "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/produto/m/acucar-refuniao-1kg-5769"
     scraper = GoodBomScraper()
-    scraper.rodar()
+    resultado = scraper.extrair(url_teste)
+    if resultado:
+        print(f"✅ SUCESSO: {resultado['nome']} | R$ {resultado['preco']:.2f}")

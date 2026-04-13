@@ -1,6 +1,6 @@
 import re
-import json
 from playwright.sync_api import sync_playwright
+from bs4 import BeautifulSoup
 from datetime import datetime
 from scrapers.base_scraper import BaseScraper
 
@@ -10,67 +10,76 @@ class AtacadaoScraper(BaseScraper):
         if db is None: return
 
         with sync_playwright() as p:
-            # Mantemos visível para acompanhar a limpeza da tela
-            browser = p.chromium.launch(headless=False) 
+            browser = p.chromium.launch(headless=True)
             context = browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
             )
             page = context.new_page()
+            page.route("**/*.{png,jpg,jpeg,svg,gif,woff,woff2}", lambda route: route.abort())
+            page.route("**/google-analytics.com/**", lambda route: route.abort())
 
             try:
-                print(f"🌐 Acessando: {url}")
-                page.goto(url, wait_until="networkidle", timeout=60000)
+                print(f"🌐 Acessando Atacadão: {url}")
+                page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
-                # --- LIMPA-TRILHOS (BASEADO NO SEU HTML) ---
-                print("🧹 Limpando obstáculos...")
-                page.wait_for_timeout(2000)
+                # Espera o nome do produto carregar
+                page.wait_for_selector('h1[data-test="product-details-title"]', timeout=15000)
+                page.wait_for_selector('p.text-2xl', timeout=10000)
+                page.wait_for_timeout(500)
+
+                # --- PREÇO via Playwright direto (mais confiável) ---
+                preco = 0.0
                 try:
-                    # Seletor exato para o link que você mandou no HTML
-                    btn_cookies = page.locator('a[role="button"]:has-text("Aceitar todos")')
-                    if btn_cookies.is_visible():
-                        btn_cookies.click()
-                        print("✅ Botão de cookies clicado!")
-                    
-                    # Fecha o modal de localização (o cinza de Mogi Mirim)
-                    page.keyboard.press("Escape")
+                    preco_text = page.locator('p.text-2xl').first.inner_text()
+                    match = re.search(r'([\d]+[,\.][\d]+)', preco_text)
+                    if match:
+                        preco = float(match.group(1).replace(',', '.'))
                 except:
                     pass
 
-                # --- EXTRAÇÃO ---
-                page.wait_for_selector('h1', timeout=15000)
-                nome = page.locator('h1').inner_text().strip()
-                
-                # Captura todos os preços e pega o maior (unitário)
-                print("💰 Extraindo valores...")
-                elementos_preco = page.locator('span:has-text("R$"), div:has-text("R$")').all_inner_texts()
-                
-                valores = []
-                for t in elementos_preco:
-                    match = re.search(r'(\d+,\d+)', t)
-                    if match:
-                        v = float(match.group(1).replace(',', '.'))
-                        if v > 1.0: # Filtra ruídos pequenos
-                            valores.append(v)
+                # Fallback via BeautifulSoup
+                if preco == 0.0:
+                    html = page.content()
+                    soup = BeautifulSoup(html, 'html.parser')
+                    preco_el = soup.select_one('p.text-2xl')
+                    if preco_el:
+                        match = re.search(r'([\d]+[,\.][\d]+)', preco_el.text)
+                        if match:
+                            preco = float(match.group(1).replace(',', '.'))
 
-                preco = max(valores) if valores else 0.0
+                html = page.content()
+                soup = BeautifulSoup(html, 'html.parser')
 
-                # ID de Origem (Extraindo os números finais da URL)
-                id_match = re.search(r'-([\d-]+)/p', url)
+                # --- NOME ---
+                nome_el = soup.select_one('h1[data-test="product-details-title"]')
+                nome = nome_el.text.strip().upper() if nome_el else "N/A"
+
+                
+                # --- CATEGORIA (breadcrumb) ---
+                categoria = "GERAL"
+                breadcrumbs = soup.select('nav[data-testid="breadcrumb"] a')
+                if len(breadcrumbs) >= 2:
+                    categoria = breadcrumbs[1].text.strip().upper()
+
+                # --- ID DE ORIGEM ---
+                id_match = re.search(r'-([\d]+-[\d]+)/p', url)
                 id_origem = id_match.group(1) if id_match else "N/A"
 
                 produto = {
                     "id_origem": id_origem,
                     "nome": nome,
+                    "marca": "N/A",
+                    "categoria": categoria,
                     "preco": preco,
                     "mercado": "Atacadão",
                     "unidade": "Mogi Mirim",
                     "url_produto": url,
-                    "data_extracao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "status": "cru"
+                    "data_extracao": datetime.now().isoformat(),
+                    "status": "raw"
                 }
 
-                self.salvar_dados("precos_crus", [produto])
-                print(f"🚀 SUCESSO: {nome} | R$ {preco} | ID: {id_origem}")
+                self.salvar_dados("precos", [produto])
+                print(f"✅ SUCESSO: {nome} | {categoria} | R$ {preco}")
 
             except Exception as e:
                 print(f"❌ Erro no Atacadão: {e}")
