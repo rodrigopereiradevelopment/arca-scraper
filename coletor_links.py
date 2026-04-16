@@ -38,8 +38,8 @@ def coletar_seletivo():
         "Creme dental": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/busca?q=Creme%20dental",
 
         # Pet Shop
-        "Pet Shop Alimentos": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/pet-shop-15",
-        "Pet-shop Alimentos": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/alimentos-15?ordem=HIGHER_PRICE&menor=3.19&maior=140.9&page=1",
+        "Pet Shop Petiscos": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/pet-shop-15",
+        "Pet-shop Rações": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/alimentos-15?ordem=HIGHER_PRICE&menor=3.19&maior=140.9&page=1",
         "Pet shop higiene e limpeza": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/higiene-e-limpeza-84",
 
         # Magazine
@@ -58,7 +58,7 @@ def coletar_seletivo():
         try:
             res = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
             soup = BeautifulSoup(res.content, 'html.parser')
-            produtos = soup.find_all('a', class_='ktiOQb')[:30]
+            produtos = soup.find_all('a', class_='ktiOQb')[:35]
 
             for item in produtos:
                 link = "https://www.goodbom.com.br" + item['href']
