@@ -13,22 +13,37 @@ def coletar_seletivo():
         "Farinaceos-grãos": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/mercearia-salgada-farinaceos-graos-44",
         
         # Perecíveis
-        "Hortifruti": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/hortifrutigranjeiro-1/",
-        "Açougue": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/acougue-47/",
+        "Legumes": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/legumes-30/",
+        "Frutas": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/frutas-49",
+        "Verduras": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/verduras-2",
+        "Bovino": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/bovino-114",
+        "Avicola": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/avicola-48",
+        "Suino": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/suino-97",
         "Peixaria": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/peixaria-82",
-        "Leite": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/leites-iogurtes-e-achocolatados-leites-62/",
-        "Ovos": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/ovos-91/",
-        "Padaria": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/padaria-50",
+        "Leite": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/busca?q=Leite",
+        "Embutidos": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/frios-e-embutidos-embutidos-38",
+        "Congelados-doces": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/congelados-doces-10",
+        "Conservas": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/refrigerados-conservas-94",
+        "Ovos": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/busca?q=Ovos",
+        "Padaria": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/padaria-51",
+        "Padaria": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/producao-propria-123",
         
         # Higiene e Limpeza
-        "Limpeza": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/limpeza-122/",
+        "Limpeza": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/busca?q=Sab%C3%A3o",
+        "Limpeza": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/busca?q=Detergente",
+        "Limpeza": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/busca?q=Limpeza%20pesada",
         "Higiene": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/higiene-e-cuidados-pessoais-102/",
 
         # Pet Shop
-        "Pet Shop": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/pet-shop-14",
+        "Pet Shop Alimentos": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/pet-shop-15",
+        "Pet-shop Alimentos": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/alimentos-15?ordem=HIGHER_PRICE&menor=3.19&maior=140.9&page=1",
+        "Pet shop higiene e limpeza": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/higiene-e-limpeza-84",
 
         # Magazine
-        "Magazine": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/magazine-16"
+        "Magazine": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/automotivo-60",
+        "Magazine": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/utilidades-de-limpeza-93",
+        "Magazine": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/brinquedos-96",
+        "Magazine": "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/esportelazer-40",
     }
     # Cria o banco de dados local na hora
     conn = sqlite3.connect('arca.db')
@@ -40,7 +55,7 @@ def coletar_seletivo():
         try:
             res = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
             soup = BeautifulSoup(res.content, 'html.parser')
-            produtos = soup.find_all('a', class_='ktiOQb')[:6]
+            produtos = soup.find_all('a', class_='ktiOQb')[:15]
 
             for item in produtos:
                 link = "https://www.goodbom.com.br" + item['href']
