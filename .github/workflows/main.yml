@@ -1,0 +1,18 @@
+name: Python Hello World  # Nome do seu robô
+
+on: [push]  # Ele vai rodar toda vez que você enviar código
+
+jobs:
+  build:
+    runs-on: ubuntu-latest  # Ele vai rodar numa máquina Linux do GitHub
+
+    steps:
+    - uses: actions/checkout@v3  # O robô "baixa" seu código na máquina dele
+    
+    - name: Configurar o Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Rodar o Hello World
+      run: python -c "print('Olá Rodrigo! O robô do GitHub está funcionando!')"
