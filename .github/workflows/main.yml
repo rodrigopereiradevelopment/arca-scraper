@@ -1,18 +1,34 @@
-name: Python Hello World  # Nome do seu robô
+name: CI Arca Scraper
 
-on: [push]  # Ele vai rodar toda vez que você enviar código
+on: [push]
 
 jobs:
   build:
-    runs-on: ubuntu-latest  # Ele vai rodar numa máquina Linux do GitHub
+    runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3  # O robô "baixa" seu código na máquina dele
-    
-    - name: Configurar o Python
-      uses: actions/setup-python@v4
+    - name: Checkout do Código
+      uses: actions/checkout@v4
+
+    - name: Configurar Python
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
-    - name: Rodar o Hello World
-      run: python -c "print('Olá Rodrigo! O robô do GitHub está funcionando!')"
+    - name: Instalar dependências de teste
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 requests pymongo
+
+    - name: Verificar erros de sintaxe (Lint)
+      run: |
+        # Para o robô parar se encontrar erros críticos (SyntaxError)
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        
+    - name: Verificar estilo e complexidade
+      run: |
+        # Avisa sobre estilo, mas não "quebra" o build (exit-zero)
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Finalizado
+      run: echo "✅ Análise de código concluída!"
