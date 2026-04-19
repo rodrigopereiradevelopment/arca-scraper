@@ -1,94 +1,35 @@
-import os
+import sys
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from pymongo import MongoClient
-from dotenv import load_dotenv
-
-from scrapers.goodbom import GoodBomScraper
+# Note que agora importamos as funções/classes que já cuidam do próprio banco
+from scrapers.goodbom import processar_banco as run_goodbom
 from scrapers.imperial import ImperialScraper
 from scrapers.atacadao import AtacadaoScraper
 
-load_dotenv()
+def executar_pipeline_arca():
+    inicio = datetime.now()
+    print(f"--- 🚀 INICIANDO PIPELINE ARCA: {inicio.strftime('%d/%m/%Y %H:%M:%S')} ---")
 
-def iniciar_conexao():
-    uri = os.getenv("MONGO_URI")
     try:
-        client = MongoClient(uri, serverSelectionTimeoutMS=5000)
-        client.admin.command('ping')
-        return client
+        # 1. GOODBOM: Ele lê o SQLite arca.db e salva no Mongo (App + Histórico)
+       # print("\n[1/3] Processando GoodBom (via SQLite/HTML)...")
+        #run_goodbom()
+
+        # 2. IMPERIAL: Puxa direto da API e salva no Mongo (App + Histórico)
+        #print("\n[2/3] Processando Imperial (via API REST)...")
+       # scraper_imp = ImperialScraper()
+       # scraper_imp.executar()
+
+        # 3. ATACADÃO: Puxa via GraphQL e faz Bulk Write (App + Histórico)
+        print("\n[3/3] Processando Atacadão (via GraphQL)...")
+        scraper_ata = AtacadaoScraper()
+        scraper_ata.executar()
+
+        fim = datetime.now()
+        print(f"\n--- ✅ PIPELINE FINALIZADO EM: {fim - inicio} ---")
+
     except Exception as e:
-        print(f"❌ ERRO DE CONEXÃO: {e}")
-        return None
-
-def executar_bot():
-    cliente = iniciar_conexao()
-    if not cliente: return
-
-    db = cliente["arca_bronze"]
-    colecao = db["precos"]
-
-    # -----------------------------------------------
-    # GOODBOM — requests, paralelo com ThreadPool
-    # -----------------------------------------------
-    urls_goodbom = [
-        "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/produto/m/manteiga-extra-csal-catupiry-200g-7366",
-        "https://www.goodbom.com.br/goodbom-mogi-mirim-sp/produto/m/acucar-refuniao-1kg-5769",
-    ]
-
-    print(f"\n🛒 GoodBom — {len(urls_goodbom)} produtos em paralelo...")
-    scraper_goodbom = GoodBomScraper()
-
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        futuros = {
-            executor.submit(scraper_goodbom.extrair, url): url
-            for url in urls_goodbom
-        }
-        for futuro in as_completed(futuros):
-            dados = futuro.result()
-            if dados:
-                try:
-                    colecao.insert_one(dados)
-                    print(f"✅ {dados['nome']} (GoodBom) | R$ {dados['preco']} salvo!")
-                except Exception as e:
-                    print(f"❌ Erro ao salvar GoodBom: {e}")
-            else:
-                print(f"⚠️ Falha: {futuros[futuro]}")
-
-    # -----------------------------------------------
-    # IMPERIAL — Playwright, sequencial
-    # -----------------------------------------------
-    urls_imperial = [
-        "https://onlinesim.com.br/supermercadoimperial/details/7897517209650",
-    ]
-
-    print(f"\n🛒 Imperial — {len(urls_imperial)} produtos...")
-    scraper_imperial = ImperialScraper()
-
-    for url in urls_imperial:
-        print(f"🚀 ImperialScraper extraindo: {url}")
-        dados = scraper_imperial.extrair(url)
-        if dados:
-            try:
-                colecao.insert_one(dados)
-                print(f"✅ {dados['nome']} (Imperial) | R$ {dados['preco']} salvo!")
-            except Exception as e:
-                print(f"❌ Erro ao salvar Imperial: {e}")
-
-    # -----------------------------------------------
-    # ATACADÃO — Playwright + BaseScraper (salva internamente)
-    # -----------------------------------------------
-    urls_atacadao = [
-        "https://www.atacadao.com.br/arroz-camil-agulhinha---tipo-1-pacote-com-5kg-12658-13743/p",
-    ]
-
-    print(f"\n🛒 Atacadão — {len(urls_atacadao)} produtos...")
-    scraper_atacadao = AtacadaoScraper()
-
-    for url in urls_atacadao:
-        scraper_atacadao.scrape(url)
-
-    cliente.close()
-    print("\n✅ Extração concluída!")
+        print(f"\n❌ ERRO CRÍTICO NO PIPELINE: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    executar_bot()
+    executar_pipeline_arca()
