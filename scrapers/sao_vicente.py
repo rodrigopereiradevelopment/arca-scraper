@@ -1,94 +1,152 @@
+import requests
+import time
 import re
-from playwright.sync_api import sync_playwright
+import urllib3
 from datetime import datetime
+from pymongo import UpdateOne
 from scrapers.base_scraper import BaseScraper
 
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+def normalizar_nome(nome):
+    import unicodedata
+    nome = unicodedata.normalize('NFKD', nome)
+    nome = ''.join(c for c in nome if not unicodedata.combining(c))
+    return re.sub(r'\s+', ' ', nome).strip().upper()
+
 class SaoVicenteScraper(BaseScraper):
-    def scrape(self, url):
-        db = self.conectar()
-        if db is None: return
+    def __init__(self):
+        super().__init__()
+        self.grid_url     = "https://www.svicente.com.br/on/demandware.store/Sites-SaoVicente-Site/pt_BR/Search-UpdateGrid"
+        self.quickview_url = "https://www.svicente.com.br/on/demandware.store/Sites-SaoVicente-Site/pt_BR/Product-ShowQuickView"
 
-        with sync_playwright() as p:
-            # Lançamos o navegador com um 'slow_mo' para o site não se assustar
-            browser = p.chromium.launch(headless=False, slow_mo=50)
-            context = browser.new_context(
-                viewport={'width': 1280, 'height': 900},
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-            )
-            page = context.new_page()
+        self.headers = {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json, text/html, */*",
+            "Referer": "https://www.svicente.com.br"
+        }
 
-            try:
-                print(f"🌐 Acessando São Vicente: {url}")
-                page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        self.categorias = {
+            "Hortifruti": "010",
+            "Mercearia":  "012",
+            "Carnes":     "005",
+            "Limpeza":    "011",
+            "Bebidas":    "002",
+            "Padaria":    "015",
+            "Frios":      "008"
+        }
 
-                # --- COMPORTAMENTO HUMANO ---
-                print("🖱️ Simulando atividade humana para liberar o preço...")
-                page.wait_for_timeout(3000)
-                page.mouse.wheel(0, 400) # Rola um pouco para baixo
-                page.wait_for_timeout(1000)
-                page.keyboard.press("Escape") # Fecha modais chatos
-                page.wait_for_timeout(1000)
+    def buscar_ids(self, cgid, start, sz=20):
+        params = {"cgid": cgid, "start": str(start), "sz": str(sz), "srule": "Price Ascending"}
+        try:
+            res = requests.get(self.grid_url, headers=self.headers, params=params, timeout=20, verify=False)
+            if res.status_code == 200:
+                data  = res.json()
+                ids   = [p["productID"] for p in data.get("productSearch", {}).get("productIds", [])]
+                total = data.get("productSearch", {}).get("count", 0)
+                return ids, total
+        except Exception as e:
+            print(f"   ❌ Erro ao buscar IDs: {e}")
+        return [], 0
 
-                # --- EXTRAÇÃO USANDO OS DADOS DO SEU F12 ---
-                # Esperamos o elemento do preço aparecer fisicamente na tela
-                print("🧐 Buscando elementos na página...")
-                
-                # Tenta capturar o nome
-                nome = "N/A"
-                try:
-                    nome_selector = page.locator('.product-detail__title').first
-                    nome_selector.wait_for(state="visible", timeout=10000)
-                    nome = nome_selector.inner_text().strip()
-                except:
-                    nome = page.title().split('|')[0].strip()
+    def buscar_produto(self, pid):
+        try:
+            res = requests.get(self.quickview_url, headers=self.headers,
+                               params={"pid": pid}, timeout=15, verify=False)
+            if res.status_code == 200:
+                return res.json()
+        except Exception as e:
+            print(f"      ⚠️ Erro pid={pid}: {e}")
+        return None
 
-                # Tenta capturar o preço
-                preco = 0.0
-                try:
-                    # Buscamos a classe que você confirmou no F12
-                    preco_selector = page.locator('.productPrice__price').first
-                    preco_selector.wait_for(state="visible", timeout=10000)
-                    texto_preco = preco_selector.inner_text()
-                    
-                    print(f"💰 Texto de preço capturado: {texto_preco}")
-                    
-                    # Extrai apenas os números e a vírgula
-                    match = re.search(r'(\d+,\d+)', texto_preco)
-                    if match:
-                        preco = float(match.group(1).replace(',', '.'))
-                except Exception as e:
-                    print(f"⚠️ Não foi possível capturar o preço: {e}")
+    def parsear_produto(self, data, nome_cat):
+        try:
+            p = data.get("product", {})
 
-                # --- SALVAMENTO NO BANCO ---
-                # Extrai o ID do final da URL (o 78166)
-                id_origem = "N/A"
-                id_match = re.search(r'-(\d+)\.html', url)
-                if id_match:
-                    id_origem = id_match.group(1)
+            nome_raw = p.get("productName", "")
+            if not nome_raw:
+                return None
 
-                produto = {
-                    "id_origem": id_origem,
-                    "nome": nome,
-                    "preco": preco,
-                    "mercado": "São Vicente",
-                    "unidade": "Mogi Mirim",
-                    "url_produto": url,
-                    "data_extracao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "status": "cru"
-                }
+            # Preço: já vem como float no JSON
+            preco = p.get("price", {}).get("sales", {}).get("value", 0.0)
+            if not preco:
+                return None
 
-                self.salvar_dados("precos_crus", [produto])
-                print(f"✅ SUCESSO NO ARCA: {nome} - R$ {preco}")
+            # Imagem
+            imagens = p.get("images", {}).get("large", [])
+            url_img = imagens[0].get("absURL", "") if imagens else ""
 
-            except Exception as e:
-                print(f"❌ Erro Crítico: {e}")
-            finally:
-                page.screenshot(path="debug_print.png")
-                print("📸 Screenshot atualizado em debug_print.png")
-                browser.close()
+            return {
+                "id_origem":        p.get("id", "N/A"),
+                "nome":             nome_raw.upper(),
+                "nome_normalizado": normalizar_nome(nome_raw),
+                "marca":            p.get("brand", "N/A"),
+                "categoria":        nome_cat.upper(),
+                "preco":            float(preco),
+                "mercado":          "São Vicente",
+                "unidade":          "Mogi Mirim",
+                "url_imagem":       url_img,
+                "data_extracao":    datetime.now(),
+                "status":           "bronze"
+            }
+        except Exception:
+            return None
+
+    def executar(self):
+        db_mongo = self.conectar()
+        if db_mongo is None:
+            return
+
+        print("🚀 São Vicente: Iniciando extração (QuickView JSON)...")
+
+        for nome_cat, cgid in self.categorias.items():
+            print(f"\n📦 Categoria: {nome_cat}")
+
+            start = 0
+            total = 1
+
+            while start < total:
+                ids, total = self.buscar_ids(cgid, start)
+                if not ids:
+                    break
+
+                print(f"   📋 {len(ids)} IDs | offset {start}/{total}")
+
+                batch_p = []
+                batch_h = []
+
+                for pid in ids:
+                    data_prod = self.buscar_produto(pid)
+                    if not data_prod:
+                        continue
+
+                    produto = self.parsear_produto(data_prod, nome_cat)
+                    if not produto:
+                        continue
+
+                    batch_p.append(UpdateOne(
+                        {"id_origem": pid, "mercado": "São Vicente"},
+                        {"$set": produto}, upsert=True
+                    ))
+                    batch_h.append({
+                        "id_origem": pid,
+                        "preco":     produto["preco"],
+                        "mercado":   "São Vicente",
+                        "data":      datetime.now()
+                    })
+
+                    time.sleep(0.3)
+
+                if batch_p:
+                    db_mongo['produtos'].bulk_write(batch_p)
+                    db_mongo['historico_precos'].insert_many(batch_h)
+                    print(f"   ✅ Salvos: {len(batch_p)} produtos")
+
+                start += len(ids)
+                time.sleep(1)
+
+        print("\n🏁 São Vicente: Concluído!")
 
 if __name__ == "__main__":
-    # Usando a nova URL que você mandou
-    url_teste = "https://www.svicente.com.br/arroz-tipo-1-camil-pacote-5kg-78166.html"
-    scraper = SaoVicenteScraper()
-    scraper.scrape(url_teste)
+    SaoVicenteScraper().executar()

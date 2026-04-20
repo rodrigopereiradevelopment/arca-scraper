@@ -23,8 +23,8 @@ class AtacadaoScraper(BaseScraper):
             "Accept": "*/*"
         }
         
-        # O SEGREDO: Usando o ID da região exato que você pegou no navegador
-        # Note que removi o "v2." e usei o valor que você encontrou na URL
+        # O SEGREDO: Usando o ID da região exato que foi pega no navegador
+        # Note que removi o "v2." e usei o valor encontrado na URL
         self.region_id = "U1cjYXRhY2FkYW9icjk0NQ==" 
         self.channel = '{"salesChannel":"1","seller":"atacadaobr945","regionId":"' + self.region_id + '"}'
 
