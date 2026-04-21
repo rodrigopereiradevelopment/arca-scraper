@@ -17,7 +17,7 @@ def normalizar_nome(nome):
 class SaoVicenteScraper(BaseScraper):
     def __init__(self):
         super().__init__()
-        self.grid_url     = "https://www.svicente.com.br/on/demandware.store/Sites-SaoVicente-Site/pt_BR/Search-UpdateGrid"
+        self.grid_url      = "https://www.svicente.com.br/on/demandware.store/Sites-SaoVicente-Site/pt_BR/Search-UpdateGrid"
         self.quickview_url = "https://www.svicente.com.br/on/demandware.store/Sites-SaoVicente-Site/pt_BR/Product-ShowQuickView"
 
         self.headers = {
@@ -37,7 +37,7 @@ class SaoVicenteScraper(BaseScraper):
             "Frios":      "008"
         }
 
-    def buscar_ids(self, cgid, start, sz=20):
+    def buscar_ids(self, cgid, start, sz=50):
         params = {"cgid": cgid, "start": str(start), "sz": str(sz), "srule": "Price Ascending"}
         try:
             res = requests.get(self.grid_url, headers=self.headers, params=params, timeout=20, verify=False)
@@ -50,14 +50,19 @@ class SaoVicenteScraper(BaseScraper):
             print(f"   ❌ Erro ao buscar IDs: {e}")
         return [], 0
 
-    def buscar_produto(self, pid):
-        try:
-            res = requests.get(self.quickview_url, headers=self.headers,
-                               params={"pid": pid}, timeout=15, verify=False)
-            if res.status_code == 200:
-                return res.json()
-        except Exception as e:
-            print(f"      ⚠️ Erro pid={pid}: {e}")
+    def buscar_produto(self, pid, tentativas=3):
+        for i in range(tentativas):
+            try:
+                res = requests.get(self.quickview_url, headers=self.headers,
+                                   params={"pid": pid}, timeout=15, verify=False)
+                if res.status_code == 200:
+                    return res.json()
+            except requests.exceptions.Timeout:
+                print(f"      ⏱️ Timeout pid={pid} (tentativa {i+1}/{tentativas})")
+                time.sleep(2 * (i + 1))  # 2s, 4s, 6s
+            except Exception as e:
+                print(f"      ⚠️ Erro pid={pid}: {e}")
+                break
         return None
 
     def parsear_produto(self, data, nome_cat):
@@ -68,12 +73,10 @@ class SaoVicenteScraper(BaseScraper):
             if not nome_raw:
                 return None
 
-            # Preço: já vem como float no JSON
             preco = p.get("price", {}).get("sales", {}).get("value", 0.0)
             if not preco:
                 return None
 
-            # Imagem
             imagens = p.get("images", {}).get("large", [])
             url_img = imagens[0].get("absURL", "") if imagens else ""
 
@@ -136,7 +139,7 @@ class SaoVicenteScraper(BaseScraper):
                         "data":      datetime.now()
                     })
 
-                    time.sleep(0.3)
+                    time.sleep(0.15)  # Reduzido de 0.3
 
                 if batch_p:
                     db_mongo['produtos'].bulk_write(batch_p)

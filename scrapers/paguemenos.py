@@ -1,74 +1,97 @@
-import re
-from playwright.sync_api import sync_playwright
+import requests
+import time
 from datetime import datetime
 from scrapers.base_scraper import BaseScraper
 
 class PagueMenosScraper(BaseScraper):
-    def scrape(self, url):
-        db = self.conectar()
-        if db is None: return
+    def __init__(self):
+        super().__init__()
+        self.db = self.conectar()
+        self.colecao = "precos_crus"
+        # Headers completos para evitar o bloqueio (Simulando Desktop)
+        self.headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "pt-BR,pt;q=0.9",
+            "Referer": "https://www.superpaguemenos.com.br/",
+            "Origin": "https://www.superpaguemenos.com.br",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+        }
 
-        with sync_playwright() as p:
-            # Headless=False para você ver se ele pede o CEP
-            browser = p.chromium.launch(headless=False)
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-            )
-            page = context.new_page()
+    def rodar_extracao(self):
+        if self.db is None:
+            print("❌ Erro: Banco de dados não conectado. Verifique seu .env!")
+            return
 
+        total_produtos = 16832
+        offset = 0
+        passo = 50 
+
+        print(f"🚀 [ARCA] Iniciando Pague Menos: {total_produtos} itens alvo.")
+
+        while offset < total_produtos:
+            # Endpoint oficial de busca da VTEX
+            url = f"https://www.superpaguemenos.com.br/api/catalog_system/pub/products/search?_from={offset}&_to={offset + passo - 1}"
+            
             try:
-                print(f"🌐 Acessando Pague Menos: {url}")
-                page.goto(url, wait_until="networkidle", timeout=60000)
-
-                # --- TRATAMENTO DE CEP (VTEX) ---
-                print("📍 Verificando se pede CEP...")
-                page.wait_for_timeout(3000)
+                print(f"📡 Solicitando itens {offset} até {offset + passo}...")
+                response = requests.get(url, headers=self.headers, timeout=20)
                 
-                # Se aparecer o campo de CEP, a gente preenche
-                # (Ajuste os seletores se o modal de CEP aparecer na sua tela)
-                try:
-                    input_cep = page.locator('input[placeholder*="CEP"], #ship-postalCode').first
-                    if input_cep.is_visible():
-                        input_cep.fill("13800202")
-                        page.keyboard.press("Enter")
-                        print("✅ CEP 13800-202 inserido!")
-                        page.wait_for_timeout(3000)
-                except:
-                    pass
-
-                # --- EXTRAÇÃO (USANDO O SEU F12) ---
-                print("💰 Extraindo dados...")
+                # Verificação de segurança antes de tentar ler o JSON
+                content_type = response.headers.get('Content-Type', '')
                 
-                # Nome do produto (usando o itemprop="name" que costuma ter na VTEX)
-                nome = page.locator('h1').inner_text().strip()
+                if response.status_code == 200 and 'application/json' in content_type:
+                    dados_vtex = response.json()
+                    
+                    if not dados_vtex:
+                        print("🏁 Fim dos dados na API.")
+                        break
 
-                # Preço: Vamos direto no meta itemprop="price" que você achou!
-                # Ele é o mais preciso de todos.
-                preco_raw = page.locator('meta[itemprop="price"]').get_attribute('content')
-                preco = float(preco_raw) if preco_raw else 0.0
+                    lote_formatado = []
+                    for produto in dados_vtex:
+                        try:
+                            items = produto.get('items', [])
+                            if not items: continue
+                            
+                            oferta = items[0].get('sellers', [{}])[0].get('commertialOffer', {})
+                            preco = oferta.get('Price', 0)
 
-                produto = {
-                    "id_origem": url.split('/')[-2], # Pega o slug do produto
-                    "nome": nome,
-                    "preco": preco,
-                    "mercado": "Pague Menos",
-                    "unidade": "Mogi Mirim",
-                    "url_produto": url,
-                    "data_extracao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "status": "cru"
-                }
+                            if preco > 0:
+                                lote_formatado.append({
+                                    "id_origem": produto.get('productId'),
+                                    "nome": produto.get('productName'),
+                                    "preco": preco,
+                                    "mercado": "Pague Menos",
+                                    "unidade": "Mogi Mirim",
+                                    "url_produto": produto.get('link'),
+                                    "imagem": items[0].get('images', [{}])[0].get('imageUrl') if items[0].get('images') else None,
+                                    "data_extracao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                    "status": "cru"
+                                })
+                        except Exception:
+                            continue
 
-                self.salvar_dados("precos_crus", [produto])
-                print(f"🚀 SUCESSO PAGUE MENOS: {nome} | R$ {preco}")
+                    if lote_formatado:
+                        self.salvar_dados(self.colecao, lote_formatado)
+                    
+                    offset += passo
+                    time.sleep(2) # Delay um pouco maior para segurança
+                
+                else:
+                    if 'text/html' in content_type:
+                        print("🚫 Bloqueio detectado: O servidor retornou HTML em vez de JSON.")
+                        print("Dica: Pode ser um Captcha ou bloqueio de IP. Tente trocar de rede (Wi-Fi/4G).")
+                    else:
+                        print(f"⚠️ Resposta inesperada (Status {response.status_code}).")
+                    
+                    break # Para o loop para não queimar o IP
 
             except Exception as e:
-                print(f"❌ Erro no Pague Menos: {e}")
-                page.screenshot(path="erro_paguemenos.png")
-            finally:
-                browser.close()
+                print(f"❌ Erro no loop: {e}")
+                time.sleep(10)
 
 if __name__ == "__main__":
-    # Link que você mandou
-    url_teste = "https://www.superpaguemenos.com.br/arroz-raroz-tipo-1-5kg/p"
     scraper = PagueMenosScraper()
-    scraper.scrape(url_teste)
+    scraper.rodar_extracao()
