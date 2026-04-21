@@ -58,7 +58,7 @@ def coletar_seletivo():
         try:
             res = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
             soup = BeautifulSoup(res.content, 'html.parser')
-            produtos = soup.find_all('a', class_='ktiOQb')[:35]
+            produtos = soup.find_all('a', class_='ktiOQb')[:3000]
 
             for item in produtos:
                 link = "https://www.goodbom.com.br" + item['href']

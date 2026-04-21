@@ -1,97 +1,140 @@
+import sqlite3
 import requests
+import re
 import time
+from bs4 import BeautifulSoup
 from datetime import datetime
 from scrapers.base_scraper import BaseScraper
+from pymongo import UpdateOne
+
+def normalizar_nome(nome):
+    import unicodedata
+    nome = unicodedata.normalize('NFKD', nome)
+    nome = ''.join(c for c in nome if not unicodedata.combining(c))
+    return re.sub(r'\s+', ' ', nome).strip().upper()
 
 class PagueMenosScraper(BaseScraper):
     def __init__(self):
         super().__init__()
-        self.db = self.conectar()
-        self.colecao = "precos_crus"
-        # Headers completos para evitar o bloqueio (Simulando Desktop)
         self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "pt-BR,pt;q=0.9",
-            "Referer": "https://www.superpaguemenos.com.br/",
-            "Origin": "https://www.superpaguemenos.com.br",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-origin",
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
 
-    def rodar_extracao(self):
-        if self.db is None:
-            print("❌ Erro: Banco de dados não conectado. Verifique seu .env!")
-            return
+    def extrair(self, url_produto, categoria_original):
+        try:
+            response = requests.get(url_produto, headers=self.headers, timeout=15)
+            if response.status_code != 200:
+                return None
 
-        total_produtos = 16832
-        offset = 0
-        passo = 50 
-
-        print(f"🚀 [ARCA] Iniciando Pague Menos: {total_produtos} itens alvo.")
-
-        while offset < total_produtos:
-            # Endpoint oficial de busca da VTEX
-            url = f"https://www.superpaguemenos.com.br/api/catalog_system/pub/products/search?_from={offset}&_to={offset + passo - 1}"
+            soup = BeautifulSoup(response.text, 'html.parser')
             
-            try:
-                print(f"📡 Solicitando itens {offset} até {offset + passo}...")
-                response = requests.get(url, headers=self.headers, timeout=20)
-                
-                # Verificação de segurança antes de tentar ler o JSON
-                content_type = response.headers.get('Content-Type', '')
-                
-                if response.status_code == 200 and 'application/json' in content_type:
-                    dados_vtex = response.json()
-                    
-                    if not dados_vtex:
-                        print("🏁 Fim dos dados na API.")
-                        break
+            # --- EXTRAÇÃO DO NOME ---
+            # Tentamos o H1 ou a meta tag (mais estável em páginas de produto único)
+            nome_tag = soup.find('h1') or soup.find('title')
+            nome_raw = nome_tag.get_text(strip=True) if nome_tag else "PRODUTO SEM NOME"
 
-                    lote_formatado = []
-                    for produto in dados_vtex:
-                        try:
-                            items = produto.get('items', [])
-                            if not items: continue
-                            
-                            oferta = items[0].get('sellers', [{}])[0].get('commertialOffer', {})
-                            preco = oferta.get('Price', 0)
+            # --- EXTRAÇÃO DO PREÇO (Lógica Sniper com Regex) ---
+            # Pegamos o texto da página toda para não errar a tag
+            texto_pagina = soup.get_text()
+            valores = re.findall(r"R\$\s?\d+,\d{2}", texto_pagina)
+            
+            preco = 0.0
+            if valores:
+                # O último valor R$ encontrado geralmente é o "Preço Por"
+                preco_str = valores[-1].replace('R$', '').replace('.', '').replace(',', '.').strip()
+                preco = float(preco_str)
 
-                            if preco > 0:
-                                lote_formatado.append({
-                                    "id_origem": produto.get('productId'),
-                                    "nome": produto.get('productName'),
-                                    "preco": preco,
-                                    "mercado": "Pague Menos",
-                                    "unidade": "Mogi Mirim",
-                                    "url_produto": produto.get('link'),
-                                    "imagem": items[0].get('images', [{}])[0].get('imageUrl') if items[0].get('images') else None,
-                                    "data_extracao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                    "status": "cru"
-                                })
-                        except Exception:
-                            continue
+            # --- EXTRAÇÃO DA IMAGEM ---
+            img_tag = soup.find('img', {'id': 'image-main'}) or soup.find('meta', property="og:image")
+            url_img = img_tag.get('src') or img_tag.get('content') if img_tag else "N/A"
 
-                    if lote_formatado:
-                        self.salvar_dados(self.colecao, lote_formatado)
-                    
-                    offset += passo
-                    time.sleep(2) # Delay um pouco maior para segurança
-                
-                else:
-                    if 'text/html' in content_type:
-                        print("🚫 Bloqueio detectado: O servidor retornou HTML em vez de JSON.")
-                        print("Dica: Pode ser um Captcha ou bloqueio de IP. Tente trocar de rede (Wi-Fi/4G).")
-                    else:
-                        print(f"⚠️ Resposta inesperada (Status {response.status_code}).")
-                    
-                    break # Para o loop para não queimar o IP
+            return {
+                "id_origem": url_produto.split('/')[-2], # Pega o slug da URL como ID
+                "ean": "N/A",
+                "nome": nome_raw.upper(),
+                "nome_normalizado": normalizar_nome(nome_raw),
+                "marca": "N/A",
+                "categoria": categoria_original.upper(),
+                "preco": preco,
+                "mercado": "PagueMenos",
+                "unidade": "Mogi Mirim",
+                "url_imagem": url_img,
+                "url_produto": url_produto,
+                "data_extracao": datetime.now(),
+                "status": "bronze"
+            }
+        except Exception as e:
+            print(f"   ⚠️ Erro ao extrair {url_produto}: {e}")
+            return None
 
-            except Exception as e:
-                print(f"❌ Erro no loop: {e}")
-                time.sleep(10)
+def processar_paguemenos():
+    scraper = PagueMenosScraper()
+    db_mongo = scraper.conectar()
+    if db_mongo is None: return
+
+    try:
+        # --- MUDANÇA: Lendo da tabela específica que você criou ---
+        conn = sqlite3.connect('arca.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT url, cat FROM links_paguemenos")
+        produtos_sqlite = cursor.fetchall()
+        conn.close()
+    except Exception as e:
+        print(f"❌ Erro SQLite: {e}"); return
+
+    print(f"🚀 Pague Menos: Processando {len(produtos_sqlite)} itens (Bulk Mode)...")
+
+    lista_bulk = []
+    lista_historico = []
+    contador = 0
+
+    for url, categoria in produtos_sqlite:
+        dados = scraper.extrair(url, categoria)
+        
+        if dados and dados["preco"] > 0:
+            # Upsert na coleção principal
+            lista_bulk.append(
+                UpdateOne(
+                    {"id_origem": dados["id_origem"], "mercado": "PagueMenos"},
+                    {"$set": dados},
+                    upsert=True
+                )
+            )
+
+            # Insert no histórico de preços
+            lista_historico.append({
+                "nome": dados["nome"],
+                "preco": dados["preco"],
+                "mercado": "PagueMenos",
+                "data": datetime.now()
+            })
+
+            contador += 1
+
+            # DISPARO DO BULK (De 50 em 50)
+            if len(lista_bulk) >= 50:
+                try:
+                    db_mongo['produtos'].bulk_write(lista_bulk)
+                    db_mongo['historico_precos'].insert_many(lista_historico)
+                    print(f"   💾 Checkpoint: {contador} produtos processados...")
+                    lista_bulk = []
+                    lista_historico = []
+                except Exception as e:
+                    print(f"   ❌ Erro no Bulk: {e}")
+
+        # Delay para não ser bloqueado (Pague Menos é sensível)
+        time.sleep(1.2)
+
+    # Limpeza final
+    if lista_bulk:
+        try:
+            db_mongo['produtos'].bulk_write(lista_bulk)
+            db_mongo['historico_precos'].insert_many(lista_historico)
+        except Exception as e:
+            print(f"   ❌ Erro no Bulk Final: {e}")
+
+    scraper.client.close()
+    print(f"🏁 Pague Menos: Finalizado! Total: {contador} itens salvos no Atlas.")
 
 if __name__ == "__main__":
-    scraper = PagueMenosScraper()
-    scraper.rodar_extracao()
+    processar_paguemenos()

@@ -1,51 +1,63 @@
 import sys
 from datetime import datetime
-# Importando os scrapers
+# Importando todos os scrapers da sua pasta
 from scrapers.goodbom import processar_banco as run_goodbom
+from scrapers.paguemenos import processar_paguemenos as run_paguemenos
 from scrapers.imperial import ImperialScraper
 from scrapers.atacadao import AtacadaoScraper
+from scrapers.ponto_novo import PontoNovoScraper  # Ajuste o nome da classe se for diferente
+from scrapers.sao_vicente import SaoVicenteScraper # Ajuste o nome da classe se for diferente
 
 def executar_pipeline_arca():
     inicio = datetime.now()
     print(f"--- 🚀 INICIANDO PIPELINE ARCA: {inicio.strftime('%d/%m/%Y %H:%M:%S')} ---")
 
+    # Lista de tarefas para facilitar a manutenção
+    # [Nome, Função/Método para executar]
+    
+    # 1. GOODBOM
+    print("\n[1/6] Processando GoodBom...")
+    try: run_goodbom()
+    except Exception as e: print(f"⚠️ Erro no GoodBom: {e}")
+
+    # 2. PAGUE MENOS (O que terminamos agora!)
+    print("\n[2/6] Processando Pague Menos...")
+    try: run_paguemenos()
+    except Exception as e: print(f"⚠️ Erro no Pague Menos: {e}")
+
+    # 3. IMPERIAL
+    print("\n[3/6] Processando Imperial...")
     try:
-        # 1. GOODBOM
-        print("\n[1/3] Processando GoodBom (via SQLite/HTML)...")
-        try:
-            run_goodbom()
-        except Exception as e:
-            print(f"⚠️ Erro no GoodBom, mas seguindo adiante: {e}")
+        sc_imp = ImperialScraper()
+        sc_imp.executar()
+    except Exception as e: print(f"⚠️ Erro no Imperial: {e}")
 
-        # 2. IMPERIAL
-        print("\n[2/3] Processando Imperial (via API REST)...")
-        try:
-            scraper_imp = ImperialScraper()
-            # O if/else agora está dentro do try e bem alinhado
-            if hasattr(scraper_imp, 'testar_conexao') and scraper_imp.testar_conexao(): 
-                scraper_imp.executar()
-            else:
-                # Se ainda não criou o método testar_conexao, ele executa direto
-                scraper_imp.executar()
-        except Exception as e:
-            print(f"❌ Falha no Imperial: {e}. Indo para o próximo...")
+    # 4. ATACADÃO
+    print("\n[4/6] Processando Atacadão...")
+    try:
+        sc_ata = AtacadaoScraper()
+        sc_ata.executar()
+    except Exception as e: print(f"⚠️ Erro no Atacadão: {e}")
 
-        # 3. ATACADÃO
-        print("\n[3/3] Processando Atacadão (via GraphQL)...")
-        try:
-            scraper_ata = AtacadaoScraper()
-            scraper_ata.executar() 
-        except Exception as e:
-            print(f"❌ Atacadão deu erro, mas o pipeline continua: {e}")
+    # 5. PONTO NOVO
+    print("\n[5/6] Processando Ponto Novo...")
+    try:
+        sc_ponto = PontoNovoScraper()
+        sc_ponto.executar()
+    except Exception as e: print(f"⚠️ Erro no Ponto Novo: {e}")
 
-        # Finalização (fora dos blocos try internos, mas dentro do principal)
-        fim = datetime.now()
-        print(f"\n--- ✅ PIPELINE FINALIZADO EM: {fim - inicio} ---")
+    # 6. SÃO VICENTE
+    print("\n[6/6] Processando São Vicente...")
+    try:
+        sc_sv = SaoVicenteScraper()
+        sc_sv.executar()
+    except Exception as e: print(f"⚠️ Erro no São Vicente: {e}")
 
-    except Exception as e:
-        # Esse só pega se algo travar o script inteiro
-        print(f"\n❌ ERRO CRÍTICO NO PIPELINE: {e}")
-        sys.exit(1)
+    # Finalização
+    fim = datetime.now()
+    duracao = fim - inicio
+    print(f"\n--- ✅ PIPELINE FINALIZADO EM: {duracao} ---")
+    print(f"Total de mercados processados: 6")
 
 if __name__ == "__main__":
     executar_pipeline_arca()
