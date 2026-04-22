@@ -66,15 +66,18 @@ class PontoNovoScraper(BaseScraper):
             print(f"\n📦 {cat_nome} (ID: {cat_id})")
 
             subcat_data = self.get(f"{self.api}/user/v1.00/subcat/{cat_id}")
-            ret = subcat_data.get("return") if subcat_data else None
+            ret     = subcat_data.get("return") if subcat_data else None
             subcats = ret.get("subcategory", []) if ret else []
 
             if not subcats:
-                subcats = [{"id_subcategoria": 0, "nome_subcategoria": cat_nome}]
+                subcats = [{"id_subcategoria": 0, "nome_subcategoria": cat_nome, "count": 999}]
 
             for sub in subcats:
                 sub_id   = sub["id_subcategoria"]
                 sub_nome = sub["nome_subcategoria"]
+                total    = sub.get("count", 999)
+
+                print(f"   🔎 {sub_nome} ({total} produtos)")
 
                 pagina = 0
                 while True:
@@ -82,8 +85,9 @@ class PontoNovoScraper(BaseScraper):
                     if not feed_data:
                         break
 
-                    ret = feed_data.get("return") or {}
+                    ret          = feed_data.get("return") or {}
                     produtos_raw = ret.get("products", [])
+
                     if not produtos_raw:
                         break
 
@@ -104,7 +108,8 @@ class PontoNovoScraper(BaseScraper):
                                 "ean":              p.get("barcode", "N/A"),
                                 "nome":             nome_raw.upper(),
                                 "nome_normalizado": normalizar_nome(nome_raw),
-                                "categoria":        sub_nome.upper(),
+                                "categoria":        cat_nome.upper(),
+                                "subcategoria":     sub_nome.upper(),
                                 "preco":            preco,
                                 "mercado":          self.mercado,
                                 "unidade":          self.unidade,
@@ -129,7 +134,11 @@ class PontoNovoScraper(BaseScraper):
                     if batch_p:
                         db['produtos'].bulk_write(batch_p)
                         db['historico_precos'].insert_many(batch_h)
-                        print(f"   ✅ {len(batch_p)} produtos salvos ({sub_nome} p.{pagina})")
+                        salvos = (pagina * 30) + len(batch_p)
+                        print(f"      ✅ {salvos}/{total} (p.{pagina})")
+
+                    if len(produtos_raw) < 30:
+                        break
 
                     pagina += 1
                     time.sleep(0.5)
