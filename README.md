@@ -47,6 +47,6 @@ python3 main.py
 
 ​Este projeto foi desenvolvido estritamente para fins educacionais e como Trabalho de Conclusão de Curso (TCC). O scraper respeita os intervalos de requisição para não sobrecarregar os servidores dos estabelecimentos citados. Os dados coletados são de domínio público.
 
-​## ⚖️ Licença
+## ⚖️ Licença
 
 ​Este projeto está sob a licença MIT - veja o arquivo LICENSE para detalhes.
