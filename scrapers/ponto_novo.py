@@ -19,17 +19,27 @@ class PontoNovoScraper(BaseScraper):
         self.mercado = "Ponto Novo"
         self.unidade = "Mogi Mirim"
 
-        self.headers = {
-            "User-Agent":    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
-            "Accept":        "application/json, text/plain, */*",
-            "Origin":        "https://onlinesim.com.br",
-            "Referer":       "https://onlinesim.com.br/",
-            "Authorization": "Bearer owrF028ztCGzNh2nIr57mq447qKveGHr6bEGsgVPmjuxbiWPiZ5s2P0wEEjC9SXbZsh3r0JCXSvV4CRuRNrQQJ6mrav1C3mFfgyZ",
-            "store":         "90",
-            "isu":           "0",
-            "platform":      "1",
-            "version":       "v2.6.0"
-        }
+        import os
+from dotenv import load_dotenv
+
+# Carrega as variáveis do arquivo .env
+load_dotenv()
+
+# Agora o código busca o token do ambiente
+token = os.getenv("API_AUTHORIZATION_TOKEN")
+
+self.headers = {
+    "User-Agent":    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+    "Accept":        "application/json, text/plain, */*",
+    "Origin":        "https://onlinesim.com.br",
+    "Referer":       "https://onlinesim.com.br/",
+    "Authorization": f"Bearer {token}",  # Usa o token carregado do .env
+    "store":         "90",
+    "isu":           "0",
+    "platform":      "1",
+    "version":       "v2.6.0"
+}
+
 
     def get(self, url):
         try:
