@@ -38,9 +38,23 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. **Executar o pipeline completo:**
+3. **⚙️ Configurar Variáveis de Ambiente** (.env):
+Crie um arquivo .env na raiz do projeto e cole o seguinte (ajustando suas credenciais):
+```bash
+# Banco de Dados
+MONGO_URI=mongodb+srv://<USUARIO>:<SENHA>@arca-cluster.xo5yomu.mongodb.net/?appName=arca-cluster
+
+# Chave pública diária (Ponto Novo)
+API_AUTHORIZATION_TOKEN=owrF028ztCGzNh2nIr57mq447qKveGHr6bEGsgVPmjuxbiWPiZ5s2P0wEEjC9SXbZsh3r0JCXSvV4CRuRNrQQJ6mrav1C3mFfgyZ
+```
+
+4. **Executar o pipeline completo:**
 ```bash
 python3 main.py
+```
+
+**🛡️ Segurança**
+: O arquivo .env real contém suas credenciais privadas e nunca deve ser enviado para o GitHub. Ele já está listado no .gitignore deste projeto.
 ```
 
 ## ⚠️ Aviso Ético e Legal
