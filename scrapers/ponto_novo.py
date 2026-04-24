@@ -2,9 +2,14 @@ import requests
 import time
 import re
 import unicodedata
+import os 
 from datetime import datetime
 from pymongo import UpdateOne
 from scrapers.base_scraper import BaseScraper
+from dotenv import load_dotenv 
+
+# Carrega as variáveis do arquivo .env (Token e MongoDB)
+load_dotenv()
 
 def normalizar_nome(nome):
     if not nome: return "N/A"
@@ -12,23 +17,24 @@ def normalizar_nome(nome):
     nome = ''.join(c for c in nome if not unicodedata.combining(c))
     return re.sub(r'\s+', ' ', nome).strip().upper()
 
-class PontoNovoScraper(BaseScraper):
+class PontoNovoClient(BaseScraper):
     def __init__(self):
         super().__init__()
         self.api     = "https://api.mobilesim.com.br"
         self.mercado = "Ponto Novo"
         self.unidade = "Mogi Mirim"
+        
+        token = os.getenv("API_AUTHORIZATION_TOKEN")
 
+        # Headers atualizados com 'isu' conforme exigência da API (Erro 401)
         self.headers = {
-            "User-Agent":    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
-            "Accept":        "application/json, text/plain, */*",
-            "Origin":        "https://onlinesim.com.br",
-            "Referer":       "https://onlinesim.com.br/",
-            "Authorization": "Bearer owrF028ztCGzNh2nIr57mq447qKveGHr6bEGsgVPmjuxbiWPiZ5s2P0wEEjC9SXbZsh3r0JCXSvV4CRuRNrQQJ6mrav1C3mFfgyZ",
-            "store":         "90",
-            "isu":           "0",
-            "platform":      "1",
-            "version":       "v2.6.0"
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}", 
+            "store": "90",
+            "isu": "0",
+            "platform": "1",
+            "version": "v2.6.0"
         }
 
     def get(self, url):
@@ -36,114 +42,119 @@ class PontoNovoScraper(BaseScraper):
             res = requests.get(url, headers=self.headers, timeout=15)
             if res.status_code == 200:
                 return res.json()
-            print(f"   ⚠️ {res.status_code} → {url}")
+            # Se der erro 401 aqui, o Token no .env provavelmente expirou
+            print(f"   ⚠️ Status {res.status_code} na URL: {url}")
         except Exception as e:
-            print(f"   ❌ {e}")
+            print(f"   ❌ Erro de conexão: {e}")
         return None
 
     def executar(self):
         db = self.conectar()
-        if db is None:
+        if db is None: 
+            print("❌ Falha ao conectar ao Banco de Dados.")
             return
 
-        print("🚀 Ponto Novo: Iniciando extração...")
+        print(f"🚀 {self.mercado}: Iniciando extração via API...")
 
+        # Busca as Categorias Principais (Tabs)
         tabs_data = self.get(f"{self.api}/user/v1.02/tabs")
-        if not tabs_data:
-            print("❌ Falha ao buscar categorias. Verifique o token.")
+        
+        if not tabs_data or not tabs_data.get("return"):
+            print(f"❌ Erro na resposta inicial: {tabs_data}")
             return
 
         categorias = [
-            c for c in tabs_data.get("return", [])
-            if "INSUMOS" not in c["name"].upper() and "CONSUMO" not in c["name"].upper()
+            c for c in tabs_data["return"]
+            if not any(x in c["name"].upper() for x in ["INSUMOS", "CONSUMO"])
         ]
 
-        print(f"   📋 {len(categorias)} categorias encontradas")
-
         for cat in categorias:
-            cat_id   = cat["id"]
-            cat_nome = cat["name"]
-            print(f"\n📦 {cat_nome} (ID: {cat_id})")
+            cat_id, cat_nome = cat["id"], cat["name"]
+            print(f"\n📦 Categoria: {cat_nome} (ID: {cat_id})")
 
-            subcat_data = self.get(f"{self.api}/user/v1.00/subcat/{cat_id}")
-            ret     = subcat_data.get("return") if subcat_data else None
-            subcats = ret.get("subcategory", []) if ret else []
-
-            if not subcats:
-                subcats = [{"id_subcategoria": 0, "nome_subcategoria": cat_nome, "count": 999}]
-
-            for sub in subcats:
-                sub_id   = sub["id_subcategoria"]
-                sub_nome = sub["nome_subcategoria"]
-                total    = sub.get("count", 999)
-
-                print(f"   🔎 {sub_nome} ({total} produtos)")
-
+            # Varrendo subcategorias de 0 a 15 (baseado no seu mapeamento manual)
+            # Isso garante que pegamos o /7/1, /7/2, etc.
+            for sub_id in range(0, 16):
                 pagina = 0
                 while True:
-                    feed_data = self.get(f"{self.api}/user/v1.03/feed/{sub_id}/{pagina}/{cat_id}")
-                    if not feed_data:
-                        break
+                    url_feed = f"{self.api}/user/v1.03/feed/{sub_id}/{pagina}/{cat_id}"
+                    feed_data = self.get(url_feed)
+                    
+                    if not feed_data: break
 
-                    ret          = feed_data.get("return") or {}
+                    ret = feed_data.get("return") or {}
                     produtos_raw = ret.get("products", [])
+                    
+                    # Se a página ou subcategoria não retornar produtos, para este loop
+                    if not produtos_raw: break
 
-                    if not produtos_raw:
-                        break
-
-                    batch_p = []
-                    batch_h = []
+                    batch_p, batch_h = [], []
 
                     for p in produtos_raw:
                         try:
+                            # Lógica de Preço Inteligente (Preço Clube vs Preço Normal)
+                            preco_base = float(p.get("price", 0))
+                            oferta = p.get("offer") or {}
+                            preco_oferta = float(oferta.get("offer_connect", preco_base))
+                            
+                            # Validação para não salvar preço zero
+                            preco_final = preco_oferta if 0 < preco_oferta <= preco_base else preco_base
+                            
                             id_origem = str(p.get("sku", ""))
-                            nome_raw  = p.get("name", "N/A")
-                            preco     = float(p.get("price", 0.0))
+                            if not id_origem or preco_final == 0: continue
 
-                            if not id_origem or preco == 0:
-                                continue
+                            nome_raw = p.get("name", "N/A")
+                            img_hash = p.get("imghash", "")
+                            url_img = f"https://s3.mobilesim.com.br/images/products/{img_hash}.jpg" if img_hash else ""
 
-                            produto = {
-                                "id_origem":        id_origem,
-                                "ean":              p.get("barcode", "N/A"),
-                                "nome":             nome_raw.upper(),
+                            # Documento para a coleção 'produtos' (Upsert)
+                            produto_doc = {
+                                "id_origem": id_origem,
+                                "ean": p.get("barcode", "N/A"),
+                                "nome": nome_raw.upper(),
                                 "nome_normalizado": normalizar_nome(nome_raw),
-                                "categoria":        cat_nome.upper(),
-                                "subcategoria":     sub_nome.upper(),
-                                "preco":            preco,
-                                "mercado":          self.mercado,
-                                "unidade":          self.unidade,
-                                "url_imagem":       p.get("imghash", ""),
-                                "data_extracao":    datetime.now(),
-                                "status":           "bronze"
+                                "categoria": cat_nome.upper(),
+                                "subcategoria_id": sub_id,
+                                "preco": preco_final,
+                                "preco_antigo": preco_base if preco_final < preco_base else None,
+                                "mercado": self.mercado,
+                                "unidade": self.unidade,
+                                "url_imagem": url_img,
+                                "is_kg": p.get("is_kg", 0),
+                                "data_extracao": datetime.now(),
+                                "status": "bronze"
                             }
 
+                            # Adiciona para escrita em lote (performance)
                             batch_p.append(UpdateOne(
                                 {"id_origem": id_origem, "mercado": self.mercado},
-                                {"$set": produto}, upsert=True
+                                {"$set": produto_doc}, upsert=True
                             ))
+                            
+                            # Documento para 'historico_precos' (Insert Always)
                             batch_h.append({
                                 "id_origem": id_origem,
-                                "preco":     preco,
-                                "mercado":   self.mercado,
-                                "data":      datetime.now()
+                                "preco": preco_final,
+                                "mercado": self.mercado,
+                                "data": datetime.now()
                             })
-                        except Exception:
+
+                        except Exception as e:
                             continue
 
+                    # Salva no Banco de Dados se houver dados no lote
                     if batch_p:
                         db['produtos'].bulk_write(batch_p)
                         db['historico_precos'].insert_many(batch_h)
-                        salvos = (pagina * 30) + len(batch_p)
-                        print(f"      ✅ {salvos}/{total} (p.{pagina})")
+                        print(f"   ✅ SubID {sub_id} | Pág {pagina}: {len(batch_p)} produtos")
 
-                    if len(produtos_raw) < 30:
-                        break
-
+                    # Se a página veio com menos de 30 itens, é a última página daquela subcat
+                    if len(produtos_raw) < 30: break
+                    
                     pagina += 1
-                    time.sleep(0.5)
+                    time.sleep(0.3) # Delay de segurança anti-bloqueio
 
-        print("\n🏁 Ponto Novo: Concluído!")
+        print("\n🏁 Ponto Novo: Atualização finalizada com sucesso!")
 
 if __name__ == "__main__":
-    PontoNovoScraper().executar()
+    PontoNovoClient().executar()
