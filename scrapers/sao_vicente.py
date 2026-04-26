@@ -1,15 +1,28 @@
+"""
+╔═══════════════════════════════════════════════════════════════════════════╗
+║            PROJETO ARCA - Comparação de Preços                            ║
+║                   Bot Acadêmico - São Vicente                             ║
+╠═══════════════════════════════════════════════════════════════════════════╣
+║ Este bot coleta preços para TCC na ETEC Pedro Ferreira Alves              ║
+║ Objetivo: acessibilidade no consumo e ciência de dados                    ║
+║ Não há intenção de sobrecarregar servidores.                              ║
+║                                                                           ║
+║ Desenvolvedor : Rodrigo                                                   ║
+║ GitHub        : https://github.com/rodrigopereiradevelopment/arca-ionic   ║
+║ Contato       : rodrigopereira.development@gmail.com                      ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+"""
+
 import requests
 import time
+import unicodedata
 import re
-import urllib3
 from datetime import datetime
 from pymongo import UpdateOne
 from scrapers.base_scraper import BaseScraper
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 def normalizar_nome(nome):
-    import unicodedata
+    if not nome: return "N/A"
     nome = unicodedata.normalize('NFKD', nome)
     nome = ''.join(c for c in nome if not unicodedata.combining(c))
     return re.sub(r'\s+', ' ', nome).strip().upper()
@@ -17,137 +30,128 @@ def normalizar_nome(nome):
 class SaoVicenteScraper(BaseScraper):
     def __init__(self):
         super().__init__()
-        self.grid_url      = "https://www.svicente.com.br/on/demandware.store/Sites-SaoVicente-Site/pt_BR/Search-UpdateGrid"
-        self.quickview_url = "https://www.svicente.com.br/on/demandware.store/Sites-SaoVicente-Site/pt_BR/Product-ShowQuickView"
-
+        self.mercado = "São Vicente"
+        self.unidade = "Mogi Mirim"
+        self.base_url = "https://www.svicente.com.br/api/catalog_system/pub/products/search"
+        
         self.headers = {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "X-Requested-With": "XMLHttpRequest",
-            "Accept": "application/json, text/html, */*",
-            "Referer": "https://www.svicente.com.br"
+            "User-Agent": (
+                "ARCA-Bot/1.0 (Bot Academico TCC ETEC; "
+                "Contato: rodrigopereira.development@gmail.com; "
+                "GitHub: https://github.com/rodrigopereiradevelopment/arca-ionic)"
+            )
         }
 
+        # Categorias completas que validamos hoje
         self.categorias = {
-            "Hortifruti": "010",
-            "Mercearia":  "012",
-            "Carnes":     "005",
-            "Limpeza":    "011",
-            "Bebidas":    "002",
-            "Padaria":    "015",
-            "Frios":      "008"
+            "Mercearia": "1",
+            "Bebidas": "10",
+            "Bebidas Alcoolicas": "11",
+            "Hortifruti": "2",
+            "Carnes Aves Peixes": "3",
+            "Frios Laticinios": "4",
+            "Congelados": "5",
+            "Higiene Beleza": "6",
+            "Limpeza": "7",
+            "Biscoitos Salgadinhos": "8",
+            "Doces Sobremesas": "9",
+            "Padaria": "12",
+            "Saudaveis Organicos": "14",
+            "Bazar Utilidades": "15",
+            "Mundo Pet": "16"
         }
-
-    def buscar_ids(self, cgid, start, sz=50):
-        params = {"cgid": cgid, "start": str(start), "sz": str(sz), "srule": "Price Ascending"}
-        try:
-            res = requests.get(self.grid_url, headers=self.headers, params=params, timeout=20, verify=False)
-            if res.status_code == 200:
-                data  = res.json()
-                ids   = [p["productID"] for p in data.get("productSearch", {}).get("productIds", [])]
-                total = data.get("productSearch", {}).get("count", 0)
-                return ids, total
-        except Exception as e:
-            print(f"   ❌ Erro ao buscar IDs: {e}")
-        return [], 0
-
-    def buscar_produto(self, pid, tentativas=3):
-        for i in range(tentativas):
-            try:
-                res = requests.get(self.quickview_url, headers=self.headers,
-                                   params={"pid": pid}, timeout=15, verify=False)
-                if res.status_code == 200:
-                    return res.json()
-            except requests.exceptions.Timeout:
-                print(f"      ⏱️ Timeout pid={pid} (tentativa {i+1}/{tentativas})")
-                time.sleep(2 * (i + 1))  # 2s, 4s, 6s
-            except Exception as e:
-                print(f"      ⚠️ Erro pid={pid}: {e}")
-                break
-        return None
-
-    def parsear_produto(self, data, nome_cat):
-        try:
-            p = data.get("product", {})
-
-            nome_raw = p.get("productName", "")
-            if not nome_raw:
-                return None
-
-            preco = p.get("price", {}).get("sales", {}).get("value", 0.0)
-            if not preco:
-                return None
-
-            imagens = p.get("images", {}).get("large", [])
-            url_img = imagens[0].get("absURL", "") if imagens else ""
-
-            return {
-                "id_origem":        p.get("id", "N/A"),
-                "nome":             nome_raw.upper(),
-                "nome_normalizado": normalizar_nome(nome_raw),
-                "marca":            p.get("brand", "N/A"),
-                "categoria":        nome_cat.upper(),
-                "preco":            float(preco),
-                "mercado":          "São Vicente",
-                "unidade":          "Mogi Mirim",
-                "url_imagem":       url_img,
-                "data_extracao":    datetime.now(),
-                "status":           "bronze"
-            }
-        except Exception:
-            return None
 
     def executar(self):
-        db_mongo = self.conectar()
-        if db_mongo is None:
-            return
+        db = self.conectar()
+        if db is None: return
 
         print("🚀 São Vicente: Iniciando extração (QuickView JSON)...")
 
-        for nome_cat, cgid in self.categorias.items():
+        for nome_cat, id_cat in self.categorias.items():
             print(f"\n📦 Categoria: {nome_cat}")
+            
+            offset = 0
+            count = 50
+            
+            while True:
+                # API REST do VTEX (São Vicente)
+                url = f"{self.base_url}?fq=C:/{id_cat}/&_from={offset}&_to={offset + count - 1}"
+                
+                try:
+                    res = requests.get(url, headers=self.headers, timeout=30)
+                    
+                    if res.status_code != 200:
+                        break
+                        
+                    produtos_json = res.json()
+                    if not produtos_json:
+                        break
 
-            start = 0
-            total = 1
+                    batch_p = []
+                    batch_h = []
 
-            while start < total:
-                ids, total = self.buscar_ids(cgid, start)
-                if not ids:
-                    break
+                    for prod in produtos_json:
+                        try:
+                            pid = prod.get('productId')
+                            nome_raw = prod.get('productName')
+                            
+                            # Busca o preço no primeiro item da lista de skus
+                            item = prod['items'][0]['sellers'][0]['commertialOffer']
+                            preco = item.get('Price', 0)
+                            preco_original = item.get('ListPrice', 0)
 
-                print(f"   📋 {len(ids)} IDs | offset {start}/{total}")
+                            if preco <= 0: continue
 
-                batch_p = []
-                batch_h = []
+                            img = prod['items'][0]['images'][0].get('imageUrl', "")
+                            link = prod.get('link', "")
 
-                for pid in ids:
-                    data_prod = self.buscar_produto(pid)
-                    if not data_prod:
-                        continue
+                            produto = {
+                                "id_origem": pid,
+                                "nome": nome_raw.upper(),
+                                "nome_normalizado": normalizar_nome(nome_raw),
+                                "categoria": nome_cat.upper(),
+                                "preco": preco,
+                                "preco_original": preco_original if preco_original > preco else None,
+                                "mercado": self.mercado,
+                                "unidade": self.unidade,
+                                "url_imagem": img,
+                                "url_produto": link,
+                                "data_extracao": datetime.now(),
+                                "status": "bronze"
+                            }
 
-                    produto = self.parsear_produto(data_prod, nome_cat)
-                    if not produto:
-                        continue
+                            batch_p.append(UpdateOne(
+                                {"id_origem": pid, "mercado": self.mercado},
+                                {"$set": produto},
+                                upsert=True
+                            ))
 
-                    batch_p.append(UpdateOne(
-                        {"id_origem": pid, "mercado": "São Vicente"},
-                        {"$set": produto}, upsert=True
-                    ))
-                    batch_h.append({
-                        "id_origem": pid,
-                        "preco":     produto["preco"],
-                        "mercado":   "São Vicente",
-                        "data":      datetime.now()
-                    })
+                            batch_h.append({
+                                "id_origem": pid,
+                                "preco": preco,
+                                "mercado": self.mercado,
+                                "data": datetime.now()
+                            })
 
-                    time.sleep(0.15)  # Reduzido de 0.3
+                        except (KeyError, IndexError):
+                            continue
 
-                if batch_p:
-                    db_mongo['produtos'].bulk_write(batch_p)
-                    db_mongo['historico_precos'].insert_many(batch_h)
-                    print(f"   ✅ Salvos: {len(batch_p)} produtos")
+                    if batch_p:
+                        db['produtos'].bulk_write(batch_p)
+                        db['historico_precos'].insert_many(batch_h)
+                        print(f"   ✅ Salvos: {len(batch_p)} produtos (offset {offset})")
 
-                start += len(ids)
-                time.sleep(1)
+                    if len(produtos_json) < count:
+                        break
+
+                    offset += count
+                    time.sleep(0.15) # O "sweet spot" que você achou hoje!
+
+                except Exception as e:
+                    print(f"   ⚠️ Erro na conexão: {e}")
+                    time.sleep(2) # Espera um pouco para tentar o próximo lote
+                    offset += count
+                    continue
 
         print("\n🏁 São Vicente: Concluído!")
 

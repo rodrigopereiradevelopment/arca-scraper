@@ -1,12 +1,32 @@
+"""
+╔═══════════════════════════════════════════════════════════════════════════╗
+║           PROJETO ARCA - Comparação de Preços                             ║
+║                    Bot Acadêmico                                          ║
+╠═══════════════════════════════════════════════════════════════════════════╣
+║ Este bot coleta preços para TCC na ETEC Pedro Ferreira Alves              ║
+║ Objetivo: acessibilidade no consumo e ciência de dados                    ║
+║ Não há intenção de sobrecarregar servidores.                              ║
+║                                                                           ║
+║ Desenvolvedor : Rodrigo                                                   ║
+║ GitHub        : https://github.com/rodrigopereiradevelopment/arca-ionic   ║
+║ Contato       : rodrigopereira.development@gmail.com                      ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+"""
+
 import requests
 import time
+import re
+import unicodedata
+import os
 from datetime import datetime
-from scrapers.base_scraper import BaseScraper
 from pymongo import UpdateOne
+from scrapers.base_scraper import BaseScraper
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def normalizar_nome(nome):
-    import unicodedata
-    import re
+    if not nome: return "N/A"
     nome = unicodedata.normalize('NFKD', nome)
     nome = ''.join(c for c in nome if not unicodedata.combining(c))
     return re.sub(r'\s+', ' ', nome).strip().upper()
@@ -14,114 +34,158 @@ def normalizar_nome(nome):
 class ImperialScraper(BaseScraper):
     def __init__(self):
         super().__init__()
-        self.base_url = "https://api.mobilesim.com.br/user/v1.02/feed/0/0/"
+        self.api     = "https://api.mobilesim.com.br"
+        self.mercado = "Imperial"
+        self.unidade = "Mogi Mirim"
+        token = os.getenv("IMPERIAL_TOKEN")
+
         self.headers = {
-            "Authorization": "Bearer jrfX3qVkVBdiSrCLYyQzm3cQDB9WekXOczerypmC2jtpCUGGoRbiYXQnkvxcokutU90yNi7G2cQCA4CPld4HhhCcbj2f8WjJJrZE",
+            "User-Agent": (
+                "ARCA-Bot/1.0 (Bot Academico TCC ETEC; "
+                "Contato: rodrigopereira.development@gmail.com; "
+                "GitHub: https://github.com/rodrigopereiradevelopment/arca-ionic)"
+            ),
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
             "store": "147",
             "isu": "0",
             "platform": "1",
             "version": "v2.3.1",
             "origin": "https://onlinesim.com.br"
         }
-        # IDs das abas (categorias) mapeadas - Adicione mais conforme precisar
-        self.tabs = {
-            "1": "ACOUGUE", 
-            "23": "BEBIDAS", 
-            "6": "CEREAIS", 
-            "5": "BAZAR",
-            "2": "HORTIFRUTI",
-            "4": "LIMPEZA",     # Exemplo de nova categoria
-            "14": "PADARIA"     # Exemplo de nova categoria
-        }
 
-    def testar_conexao(self):
-        """Verifica se o token ainda é válido antes de começar"""
+    def get(self, url):
         try:
-            res = requests.get(f"{self.base_url}1", headers=self.headers, timeout=5)
-            return res.status_code == 200
-        except:
-            return False
+            res = requests.get(url, headers=self.headers, timeout=15)
+            if res.status_code == 200:
+                return res.json()
+        except Exception as e:
+            print(f"   ❌ Erro: {e}")
+        return None
 
     def executar(self):
-        db_mongo = self.conectar()
-        
-        if db_mongo is None:
-            print("❌ Falha na conexão com MongoDB")
+        db = self.conectar()
+        if db is None: return
+
+        print(f"🚀 {self.mercado}: Iniciando extração profunda...")
+
+        tabs_data = self.get(f"{self.api}/user/v1.02/tabs")
+        if not tabs_data or not tabs_data.get("return"): 
+            print("❌ Não foi possível carregar as abas principais.")
             return
-        
-        print(f"🚀 Imperial: Iniciando extração via API (Bulk Mode)...")
 
-        for tab_id, cat_nome in self.tabs.items():
-            print(f"   Buscando categoria: {cat_nome}...")
+        # Filtra categorias que não são produtos de prateleira
+        categorias = [
+            c for c in tabs_data["return"]
+            if not any(x in c["name"].upper() for x in ["INSUMOS", "CONSUMO", "OUTRAS DESPESAS"])
+        ]
+
+        total_geral = 0
+
+        for cat in categorias:
+            cat_id, cat_nome = cat["id"], cat["name"]
+            print(f"\n📂 CATEGORIA: {cat_nome.upper()} (ID: {cat_id})")
+
+            # 1. Tenta obter subcategorias oficiais
+            sub_ids = []
+            subcat_data = self.get(f"{self.api}/user/v1.00/subcat/{cat_id}")
+            if subcat_data and subcat_data.get("return"):
+                ret = subcat_data["return"]
+                if isinstance(ret, dict) and "subcategory" in ret:
+                    sub_ids = [int(s["id_subcategoria"]) for s in ret["subcategory"]]
             
-            lista_produtos = []
-            lista_historico = []
+            # 2. Varredura profunda (O Pulo do Gato para pegar a totalidade)
+            if not sub_ids:
+                print(f"   ⚠️ Varredura ativa (Range 0-60)...")
+                sub_ids = sorted(list(set([0, cat_id] + list(range(1, 61)))))
+            else:
+                print(f"   📂 Subs oficiais: {sub_ids}")
 
-            try:
-                res = requests.get(f"{self.base_url}{tab_id}", headers=self.headers, timeout=15)
-                if res.status_code == 200:
-                    produtos = res.json().get("return", {}).get("products", [])
-                    
-                    for p in produtos:
-                        nome_raw = p.get("name", "").upper()
-                        preco = float(p.get("price", 0))
-                        
-                        dados = {
-                            "id_origem":        str(p.get("sku")),
-                            "ean":              p.get("barcode") if len(str(p.get("barcode"))) >= 13 else "N/A",
-                            "nome":             nome_raw,
-                            "nome_normalizado": normalizar_nome(nome_raw),
-                            "marca":            "N/A",
-                            "categoria":        cat_nome,
-                            "preco":            preco,
-                            "mercado":          "Imperial",
-                            "unidade":          "Mogi Mirim",
-                            "url_imagem":       f"https://s3.amazonaws.com/images.mobilesim.com.br/{p.get('imghash')}.jpg" if p.get("imghash") else "N/A",
-                            "data_extracao":    datetime.now(),
-                            "status":           "bronze"
-                        }
+            total_categoria = 0
+            skus_da_categoria = set() # Evita duplicatas na mesma categoria
 
-                        # Adiciona na fila de Update (Bulk)
-                        lista_produtos.append(
-                            UpdateOne(
-                                {"id_origem": dados["id_origem"], "mercado": "Imperial"},
-                                {"$set": dados},
-                                upsert=True
-                            )
-                        )
-
-                        # Adiciona na fila do Histórico
-                        lista_historico.append({
-                            "ean": dados["ean"],
-                            "nome": dados["nome"],
-                            "preco": dados["preco"],
-                            "mercado": "Imperial",
-                            "data": datetime.now()
-                        })
-
-                        # Salva de 50 em 50
-                        if len(lista_produtos) >= 50:
-                            db_mongo['produtos'].bulk_write(lista_produtos)
-                            db_mongo['historico_precos'].insert_many(lista_historico)
-                            lista_produtos = []
-                            lista_historico = []
-
-                    # Salva o que sobrou da categoria
-                    if lista_produtos:
-                        db_mongo['produtos'].bulk_write(lista_produtos)
-                        db_mongo['historico_precos'].insert_many(lista_historico)
-
-                    print(f"   ✅ {cat_nome}: {len(produtos)} produtos processados.")
-                else:
-                    print(f"   ⚠️ Erro na aba {cat_nome}: Status {res.status_code}")
+            for sub_id in sub_ids:
+                pagina = 0
+                itens_novos_nesta_sub = 0
                 
-                time.sleep(0.5) 
-            except Exception as e:
-                print(f"   ❌ Erro ao processar aba {cat_nome}: {e}")
+                while True:
+                    feed_url = f"{self.api}/user/v1.03/feed/{sub_id}/{pagina}/{cat_id}"
+                    feed_data = self.get(feed_url)
+                    
+                    if not feed_data or not feed_data.get("return"): break
 
-        self.client.close()
-        print("🏁 Imperial: Coleta finalizada!")
+                    produtos_raw = feed_data["return"].get("products", [])
+                    if not produtos_raw: break
+
+                    batch_p, batch_h = [], []
+
+                    for p in produtos_raw:
+                        id_origem = str(p.get("sku", ""))
+                        
+                        # Filtros de segurança e integridade
+                        if not id_origem or p.get("catid") != cat_id or id_origem in skus_da_categoria:
+                            continue
+
+                        try:
+                            preco_base  = float(p.get("price", 0))
+                            oferta      = p.get("offer") or {}
+                            preco_clube = float(oferta.get("offer_connect", preco_base))
+                            preco_final = preco_clube if 0 < preco_clube <= preco_base else preco_base
+
+                            if preco_final <= 0: continue
+
+                            nome_raw = p.get("name", "N/A")
+                            img_hash = p.get("imghash", "")
+                            url_img  = f"https://s3.mobilesim.com.br/images/products/{img_hash}.jpg" if img_hash else ""
+
+                            produto_doc = {
+                                "id_origem":        id_origem,
+                                "ean":              str(p.get("barcode", "N/A")),
+                                "nome":             nome_raw.upper(),
+                                "nome_normalizado": normalizar_nome(nome_raw),
+                                "categoria":        cat_nome.upper(),
+                                "subcategoria_id":  sub_id,
+                                "preco":            preco_final,
+                                "preco_antigo":     preco_base if preco_final < preco_base else None,
+                                "mercado":          self.mercado,
+                                "unidade":          self.unidade,
+                                "url_imagem":       url_img,
+                                "data_extracao":    datetime.now(),
+                                "status":           "bronze"
+                            }
+
+                            batch_p.append(UpdateOne(
+                                {"id_origem": id_origem, "mercado": self.mercado},
+                                {"$set": produto_doc}, upsert=True
+                            ))
+                            batch_h.append({
+                                "id_origem": id_origem,
+                                "preco":     preco_final,
+                                "mercado":   self.mercado,
+                                "data":      datetime.now()
+                            })
+                            skus_da_categoria.add(id_origem)
+                            itens_novos_nesta_sub += 1
+
+                        except Exception:
+                            continue
+
+                    if batch_p:
+                        db['produtos'].bulk_write(batch_p)
+                        db['historico_precos'].insert_many(batch_h)
+                        total_categoria += len(batch_p)
+
+                    if len(produtos_raw) < 30: break
+                    pagina += 1
+                    time.sleep(0.1)
+
+                if itens_novos_nesta_sub > 0:
+                    print(f"   ✅ SubID {sub_id:02}: +{itens_novos_nesta_sub} itens (Total cat: {total_categoria})")
+
+            print(f"   📊 TOTAL {cat_nome}: {total_categoria} produtos.")
+            total_geral += total_categoria
+
+        print(f"\n🏁 FINALIZADO! Total Geral: {total_geral} produtos salvos.")
 
 if __name__ == "__main__":
-    scraper = ImperialScraper()
-    scraper.executar()
+    ImperialScraper().executar()

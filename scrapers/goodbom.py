@@ -1,14 +1,28 @@
-import sqlite3
+"""
+╔═══════════════════════════════════════════════════════════════════════════╗
+║            PROJETO ARCA - Comparação de Preços                            ║
+║                   Bot Acadêmico - GoodBom                                 ║
+╠═══════════════════════════════════════════════════════════════════════════╣
+║ Este bot coleta preços para TCC na ETEC Pedro Ferreira Alves              ║
+║ Objetivo: acessibilidade no consumo e ciência de dados                    ║
+║ Não há intenção de sobrecarregar servidores.                              ║
+║                                                                           ║
+║ Desenvolvedor : Rodrigo                                                   ║
+║ GitHub        : https://github.com/rodrigopereiradevelopment/arca-ionic   ║
+║ Contato       : rodrigopereira.development@gmail.com                      ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+"""
+
 import requests
 import re
 import time
+import unicodedata
 from datetime import datetime
-from scrapers.base_scraper import BaseScraper
 from pymongo import UpdateOne
+from scrapers.base_scraper import BaseScraper
 
 def normalizar_nome(nome):
-    import unicodedata
-    import re
+    if not nome: return "N/A"
     nome = unicodedata.normalize('NFKD', nome)
     nome = ''.join(c for c in nome if not unicodedata.combining(c))
     return re.sub(r'\s+', ' ', nome).strip().upper()
@@ -16,133 +30,137 @@ def normalizar_nome(nome):
 class GoodBomScraper(BaseScraper):
     def __init__(self):
         super().__init__()
+        self.mercado  = "GoodBom"
+        self.unidade  = "Mogi Mirim"
+        self.base_url = "https://goodbom.com.br/pt/goodbom-mogi-mirim-sp"
+
         self.headers = {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Rsc": "1"
+            "User-Agent": (
+                "ARCA-Bot/1.0 (Bot Academico TCC ETEC; "
+                "Contato: rodrigopereira.development@gmail.com; "
+                "GitHub: https://github.com/rodrigopereiradevelopment/arca-ionic)"
+            ),
+            "RSC": "1"
         }
 
-    def extrair(self, url_produto):
+        # Categorias mapeadas no F12
+        self.categorias = [
+            "hortifrutigranjeiro-1",
+            "acougue-47",
+            "mercearia-3",
+            "frios-e-laticinios-9",
+            "padaria-50",
+            "pet-shop-14",
+            "peixaria-82",
+            "magazine-16",
+            "promocoes-99999",
+        ]
+
+    def buscar_pagina(self, slug, pagina):
+        url = f"{self.base_url}/{slug}?page={pagina}"
         try:
-            response = requests.get(url_produto, headers=self.headers, timeout=15)
-            response.encoding = 'utf-8'
-
-            if response.status_code != 200:
-                return None
-
-            texto = response.text
-
-            # --- EXTRAÇÃO COM REGEX ---
-            code_match = re.search(r'"code":"(.*?)"', texto)
-            ean_gtin = re.search(r'"gtin":"(\d{13})"', texto)
-            ean_raw = re.search(r'(789\d{10})', texto)
-            nome_match = re.search(r'"product":{.*?"name":"(.*?)"', texto)
-            marca_match = re.search(r'"brand":"(.*?)"', texto)
-            img_match = re.search(r'"image":"(.*?)"', texto)
-            cat_match = re.search(r'"category":"(.*?)"', texto)
-
-            ean_final = "N/A"
-            if ean_gtin: ean_final = ean_gtin.group(1)
-            elif ean_raw: ean_final = ean_raw.group(1)
-
-            m_desc = re.search(r'"priceWithDiscount":\s*([\d.]+)', texto)
-            m_norm = re.search(r'"price":\s*([\d.]+)', texto)
-            preco = 0.0
-            if m_desc and float(m_desc.group(1)) > 0:
-                preco = float(m_desc.group(1))
-            elif m_norm:
-                preco = float(m_norm.group(1))
-
-            nome_raw = nome_match.group(1) if nome_match else "PRODUTO SEM NOME"
-            try:
-                nome_limpo = nome_raw.encode().decode('unicode_escape')
-            except:
-                nome_limpo = nome_raw
-
-            return {
-                "id_origem": code_match.group(1) if code_match else url_produto.split('/')[-1],
-                "ean": ean_final,
-                "nome": nome_limpo.upper(),
-                "nome_normalizado": normalizar_nome(nome_limpo),
-                "marca": marca_match.group(1).upper() if marca_match else "N/A",
-                "categoria": cat_match.group(1).upper() if cat_match else "GERAL",
-                "preco": preco,
-                "mercado": "GoodBom",
-                "unidade": "Mogi Mirim",
-                "url_imagem": img_match.group(1) if img_match else "N/A",
-                "url_produto": url_produto,
-                "data_extracao": datetime.now(),
-                "status": "bronze"
-            }
-        except Exception:
-            return None
-
-def processar_banco():
-    scraper = GoodBomScraper()
-    db_mongo = scraper.conectar()
-    if db_mongo is None: return
-
-    try:
-        conn = sqlite3.connect('arca.db')
-        cursor = conn.cursor()
-        cursor.execute("SELECT url FROM links")
-        produtos_sqlite = cursor.fetchall()
-        conn.close()
-    except Exception as e:
-        print(f"❌ Erro SQLite: {e}"); return
-
-    print(f"🚀 GoodBom: Coletando {len(produtos_sqlite)} itens (Bulk Mode)...")
-
-    lista_bulk = []
-    lista_historico = []
-    contador = 0
-
-    for (url,) in produtos_sqlite:
-        dados = scraper.extrair(url)
-        if dados:
-            # Prepara o Update para a tabela principal
-            lista_bulk.append(
-                UpdateOne(
-                    {"id_origem": dados["id_origem"], "mercado": "GoodBom"},
-                    {"$set": dados},
-                    upsert=True
-                )
-            )
-
-            # Prepara o Insert para o histórico
-            lista_historico.append({
-                "ean": dados["ean"],
-                "nome": dados["nome"],
-                "preco": dados["preco"],
-                "mercado": "GoodBom",
-                "data": datetime.now()
-            })
-
-            contador += 1
-
-            # DISPARO DO BULK (De 50 em 50)
-            if len(lista_bulk) >= 50:
-                try:
-                    db_mongo['produtos'].bulk_write(lista_bulk)
-                    db_mongo['historico_precos'].insert_many(lista_historico)
-                    print(f"   💾 Checkpoint: {contador} produtos processados...")
-                    lista_bulk = []
-                    lista_historico = []
-                except Exception as e:
-                    print(f"   ❌ Erro no Bulk: {e}")
-
-        # Sleep menor, já que o GoodBom é mais lento pra responder
-        time.sleep(0.8)
-
-    # SALVA O RESTANTE (O que sobrou da divisão por 50)
-    if lista_bulk:
-        try:
-            db_mongo['produtos'].bulk_write(lista_bulk)
-            db_mongo['historico_precos'].insert_many(lista_historico)
+            res = requests.get(url, headers=self.headers, timeout=20)
+            if res.status_code == 200:
+                return res.text
+            print(f"   ⚠️ {res.status_code} → {url}")
         except Exception as e:
-            print(f"   ❌ Erro no Bulk Final: {e}")
+            print(f"   ❌ Erro: {e}")
+        return None
 
-    scraper.client.close()
-    print(f"🏁 GoodBom: Finalizado! Total: {contador} itens.")
+    def parsear(self, texto, slug):
+        return re.findall(
+            r'"EcommerceProduct","id":"(\d+)"[^}]*?"name":"([^"]+)"[^}]*?"slug":"([^"]*)"[^}]*?"image":"([^"]*)"[^}]*?"price":([\d.]+)[^}]*?"priceWithDiscount":([\d.]+)',
+            texto
+        )
+
+    def executar(self):
+        db = self.conectar()
+        if db is None:
+            return
+
+        print("🚀 GoodBom: Iniciando extração...")
+
+        for slug in self.categorias:
+            # Tratamento visual do nome da categoria
+            cat_nome = slug.rsplit("-", 1)[0].upper().replace("-", " ")
+            print(f"\n📦 Categoria: {cat_nome}")
+
+            pagina = 1
+            total_salvos = 0
+
+            while True:
+                texto = self.buscar_pagina(slug, pagina)
+                if not texto:
+                    break
+
+                produtos_raw = self.parsear(texto, slug)
+
+                if not produtos_raw:
+                    break
+
+                batch_p = []
+                batch_h = []
+
+                for pid, nome_raw, produto_slug, img, preco_str, desconto_str in produtos_raw:
+                    try:
+                        preco_base    = float(preco_str)
+                        preco_desc    = float(desconto_str)
+                        preco_final   = preco_desc if preco_desc > 0 else preco_base
+
+                        if preco_final == 0:
+                            continue
+
+                        # Decodifica caracteres escapados (ex: \u00e7 -> ç)
+                        try:
+                            nome_limpo = nome_raw.encode().decode('unicode_escape')
+                        except Exception:
+                            nome_limpo = nome_raw
+
+                        produto = {
+                            "id_origem":        pid,
+                            "nome":             nome_limpo.upper(),
+                            "nome_normalizado": normalizar_nome(nome_limpo),
+                            "categoria":        cat_nome,
+                            "preco":            preco_final,
+                            "preco_original":   preco_base if preco_desc > 0 else None,
+                            "mercado":          self.mercado,
+                            "unidade":          self.unidade,
+                            "url_imagem":       img,
+                            "url_produto":      f"https://goodbom.com.br/pt/goodbom-mogi-mirim-sp/{produto_slug}",
+                            "data_extracao":    datetime.now(),
+                            "status":           "bronze"
+                        }
+
+                        batch_p.append(UpdateOne(
+                            {"id_origem": pid, "mercado": self.mercado},
+                            {"$set": produto},
+                            upsert=True
+                        ))
+                        batch_h.append({
+                            "id_origem": pid,
+                            "preco":     preco_final,
+                            "mercado":   self.mercado,
+                            "data":      datetime.now()
+                        })
+                    except Exception:
+                        continue
+
+                if batch_p:
+                    db['produtos'].bulk_write(batch_p)
+                    db['historico_precos'].insert_many(batch_h)
+                    total_salvos += len(batch_p)
+                    print(f"   ✅ Pág {pagina}: {len(batch_p)} produtos salvos")
+
+                # Regra de parada (GoodBom usa lotes de 30)
+                if len(produtos_raw) < 30:
+                    break
+
+                pagina += 1
+                time.sleep(1)  # Delay ético para não sobrecarregar
+
+            print(f"   🏁 {cat_nome}: {total_salvos} produtos no total")
+
+        print("\n🏁 GoodBom: Concluído!")
 
 if __name__ == "__main__":
-    processar_banco()
+    GoodBomScraper().executar()
