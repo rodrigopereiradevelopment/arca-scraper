@@ -1,63 +1,62 @@
-import sys
-from datetime import datetime
-# Importando todos os scrapers da sua pasta
-from scrapers.goodbom import processar_banco as run_goodbom
-from scrapers.paguemenos import processar_paguemenos as run_paguemenos
+import time
+from datetime import datetime, timedelta
+
+from scrapers.goodbom import GoodBomScraper
+from scrapers.paguemenos import PagueMenosScraper
 from scrapers.imperial import ImperialScraper
 from scrapers.atacadao import AtacadaoScraper
-from scrapers.ponto_novo import PontoNovoScraper  # Ajuste o nome da classe se for diferente
-from scrapers.sao_vicente import SaoVicenteScraper # Ajuste o nome da classe se for diferente
+from scrapers.ponto_novo import PontoNovoClient
+from scrapers.sao_vicente import SaoVicenteScraper
 
 def executar_pipeline_arca():
-    inicio = datetime.now()
-    print(f"--- 🚀 INICIANDO PIPELINE ARCA: {inicio.strftime('%d/%m/%Y %H:%M:%S')} ---")
-
-    # Lista de tarefas para facilitar a manutenção
-    # [Nome, Função/Método para executar]
+    inicio_geral = time.time()
+    data_hora_inicio = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
     
-    # 1. GOODBOM
-    print("\n[1/6] Processando GoodBom...")
-    try: run_goodbom()
-    except Exception as e: print(f"⚠️ Erro no GoodBom: {e}")
+    print(f"--- 🚀 INICIANDO PIPELINE ARCA: {data_hora_inicio} ---")
 
-    # 2. PAGUE MENOS (O que terminamos agora!)
-    print("\n[2/6] Processando Pague Menos...")
-    try: run_paguemenos()
-    except Exception as e: print(f"⚠️ Erro no Pague Menos: {e}")
+    mercados = [
+        # Coloque os mais rápidos primeiro para garantir os dados essenciais cedo
+        {"nome": "São Vicente", "instancia": SaoVicenteScraper()},
+        {"nome": "Pague Menos", "instancia": PagueMenosScraper()},
+        {"nome": "Atacadão",    "instancia": AtacadaoScraper()},
+        {"nome": "Ponto Novo",  "instancia": PontoNovoClient()},
+        {"nome": "Imperial",    "instancia": ImperialScraper()},
+        {"nome": "GoodBom",     "instancia": GoodBomScraper()}, # O maratonista por último
+    ]
 
-    # 3. IMPERIAL
-    print("\n[3/6] Processando Imperial...")
-    try:
-        sc_imp = ImperialScraper()
-        sc_imp.executar()
-    except Exception as e: print(f"⚠️ Erro no Imperial: {e}")
+    tempos = []
 
-    # 4. ATACADÃO
-    print("\n[4/6] Processando Atacadão...")
-    try:
-        sc_ata = AtacadaoScraper()
-        sc_ata.executar()
-    except Exception as e: print(f"⚠️ Erro no Atacadão: {e}")
+    for item in mercados:
+        nome = item["nome"]
+        bot = item["instancia"]
+        
+        print(f"\n⏱️  Iniciando {nome}...")
+        inicio_bot = time.time()
+        
+        try:
+            bot.executar()
+            fim_bot = time.time()
+            duracao = fim_bot - inicio_bot
+            tempos.append((nome, duracao))
+            print(f"✅ {nome} finalizado em {timedelta(seconds=int(duracao))}")
+        except Exception as e:
+            print(f"❌ Erro em {nome}: {e}")
+            tempos.append((nome, 0))
 
-    # 5. PONTO NOVO
-    print("\n[5/6] Processando Ponto Novo...")
-    try:
-        sc_ponto = PontoNovoScraper()
-        sc_ponto.executar()
-    except Exception as e: print(f"⚠️ Erro no Ponto Novo: {e}")
-
-    # 6. SÃO VICENTE
-    print("\n[6/6] Processando São Vicente...")
-    try:
-        sc_sv = SaoVicenteScraper()
-        sc_sv.executar()
-    except Exception as e: print(f"⚠️ Erro no São Vicente: {e}")
-
-    # Finalização
-    fim = datetime.now()
-    duracao = fim - inicio
-    print(f"\n--- ✅ PIPELINE FINALIZADO EM: {duracao} ---")
-    print(f"Total de mercados processados: 6")
+    # --- RELATÓRIO DE DESEMPENHO ---
+    fim_geral = time.time()
+    tempo_total_segundos = int(fim_geral - inicio_geral)
+    
+    print("\n" + "="*40)
+    print("📊 RELATÓRIO DE PERFORMANCE DO ARCA")
+    print("="*40)
+    for nome, duracao in tempos:
+        percentual = (duracao / tempo_total_segundos) * 100 if tempo_total_segundos > 0 else 0
+        print(f"{nome.ljust(15)}: {timedelta(seconds=int(duracao))} ({percentual:.1f}%)")
+    
+    print("-" * 40)
+    print(f"Tempo Total de Execução: {timedelta(seconds=tempo_total_segundos)}")
+    print("="*40)
 
 if __name__ == "__main__":
     executar_pipeline_arca()
