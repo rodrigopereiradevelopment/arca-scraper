@@ -143,6 +143,7 @@ class SaoVicenteScraper(BaseScraper):
     def executar(self):
         db_mongo = self.conectar()
         if db_mongo is None:
+            print("❌ Falha na conexão com MongoDB") # Adicione esse print para debug
             return
 
         print("🚀 São Vicente: Iniciando extração (QuickView JSON)...")
@@ -186,7 +187,7 @@ class SaoVicenteScraper(BaseScraper):
                         "data":      datetime.now()
                     })
 
-                    time.sleep(0.25)
+                    time.sleep(0.25) # Delay para evitar block
 
                 if batch_p:
                     db_mongo['produtos'].bulk_write(batch_p)
@@ -196,12 +197,9 @@ class SaoVicenteScraper(BaseScraper):
                     print(f"   ✅ Salvos: {len(batch_p)} produtos")
 
                 start += len(ids)
-                time.sleep(1)
+                time.sleep(1) # Delay entre páginas
 
             print(f"   📊 Total {nome_cat}: {total_cat} produtos")
 
+        self.client.close() # Importante fechar a conexão no final
         print(f"\n🏁 São Vicente: Concluído! Total geral: {total_geral} produtos")
-
-
-if __name__ == "__main__":
-    SaoVicenteScraper().executar()

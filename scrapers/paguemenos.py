@@ -91,83 +91,82 @@ def extrair_produtos_pagina(soup, cat):
             continue
     return produtos
 
-def processar_paguemenos():
-    scraper = BaseScraper()
-    db = scraper.conectar()
-    if db is None:
-        print("❌ Falha na conexão com MongoDB")
-        return
+class PagueMenosScraper(BaseScraper):
+    def __init__(self):
+        super().__init__()
 
-    total_geral = 0
+    def executar(self):
+        db = self.conectar()
+        if db is None:
+            print("❌ Falha na conexão com MongoDB")
+            return
 
-    for cat, qtd in CATEGORIAS.items():
-        paginas_estimadas = (qtd // 30) + 5
-        print(f"\n📦 {cat} (~{qtd} produtos)")
-        cat_total = 0
-        ultima_sig = None
-        bulk_produtos = []
-        bulk_historico = []
+        total_geral = 0
+        for cat, qtd in CATEGORIAS.items():
+            paginas_estimadas = (qtd // 30) + 5
+            print(f"\n📦 {cat} (~{qtd} produtos)")
+            cat_total = 0
+            ultima_sig = None
+            bulk_produtos = []
+            bulk_historico = []
 
-        for p in range(1, paginas_estimadas + 1):
-            url = f"{BASE}/{cat}/?p={p}"
-            try:
-                res = requests.get(url, headers=HEADERS, timeout=20)
-                if res.status_code != 200:
-                    break
+            for p in range(1, paginas_estimadas + 1):
+                url = f"{BASE}/{cat}/?p={p}"
+                try:
+                    res = requests.get(url, headers=HEADERS, timeout=20)
+                    if res.status_code != 200:
+                        break
 
-                soup = BeautifulSoup(res.content, 'html.parser')
-                forms = soup.find_all('form', class_='product-form')
+                    soup = BeautifulSoup(res.content, 'html.parser')
+                    forms = soup.find_all('form', class_='product-form')
 
-                if not forms:
-                    break
+                    if not forms:
+                        break
 
-                sig = '|'.join(str(json.loads(f.get('data-json', '{}')).get('item_id', '')) for f in forms)
-                if sig == ultima_sig:
-                    break
-                ultima_sig = sig
+                    sig = '|'.join(str(json.loads(f.get('data-json', '{}')).get('item_id', '')) for f in forms)
+                    if sig == ultima_sig:
+                        break
+                    ultima_sig = sig
 
-                produtos = extrair_produtos_pagina(soup, cat)
+                    produtos = extrair_produtos_pagina(soup, cat)
 
-                for prod in produtos:
-                    bulk_produtos.append(
-                        UpdateOne(
-                            {"id_origem": prod["id_origem"], "mercado": "PagueMenos"},
-                            {"$set": prod},
-                            upsert=True
+                    for prod in produtos:
+                        bulk_produtos.append(
+                            UpdateOne(
+                                {"id_origem": prod["id_origem"], "mercado": "PagueMenos"},
+                                {"$set": prod},
+                                upsert=True
+                            )
                         )
-                    )
-                    bulk_historico.append({
-                        "nome": prod["nome"],
-                        "preco": prod["preco"],
-                        "mercado": "PagueMenos",
-                        "data": datetime.now()
-                    })
+                        bulk_historico.append({
+                            "nome": prod["nome"],
+                            "preco": prod["preco"],
+                            "mercado": "PagueMenos",
+                            "data": datetime.now()
+                        })
 
-                cat_total += len(produtos)
+                    cat_total += len(produtos)
 
-                if len(bulk_produtos) >= 50:
-                    db['produtos'].bulk_write(bulk_produtos)
-                    db['historico_precos'].insert_many(bulk_historico)
-                    print(f"   💾 {cat_total} produtos salvos...")
-                    bulk_produtos = []
-                    bulk_historico = []
+                    if len(bulk_produtos) >= 50:
+                        db['produtos'].bulk_write(bulk_produtos)
+                        db['historico_precos'].insert_many(bulk_historico)
+                        print(f"   💾 {cat_total} produtos salvos...")
+                        bulk_produtos = []
+                        bulk_historico = []
 
-                print(f"   pág {p}: {len(produtos)} produtos")
-                time.sleep(0.6)
+                    print(f"   pág {p}: {len(produtos)} produtos")
+                    time.sleep(0.6)
 
-            except Exception as e:
-                print(f"   ❌ Erro: {e}")
-                break
+                except Exception as e:
+                    print(f"   ❌ Erro: {e}")
+                    break
 
-        if bulk_produtos:
-            db['produtos'].bulk_write(bulk_produtos)
-            db['historico_precos'].insert_many(bulk_historico)
+            if bulk_produtos:
+                db['produtos'].bulk_write(bulk_produtos)
+                db['historico_precos'].insert_many(bulk_historico)
 
-        total_geral += cat_total
-        print(f"   ✅ {cat_total} produtos em {cat}")
+            total_geral += cat_total
+            print(f"   ✅ {cat_total} produtos em {cat}")
 
-    scraper.client.close()
-    print(f"\n🏁 CONCLUÍDO! {total_geral} produtos salvos!")
-
-if __name__ == "__main__":
-    processar_paguemenos()
+        self.client.close()
+        print(f"\n🏁 CONCLUÍDO! {total_geral} produtos salvos!")
