@@ -170,3 +170,14 @@ class PagueMenosScraper(BaseScraper):
 
         self.client.close()
         print(f"\n🏁 CONCLUÍDO! {total_geral} produtos salvos!")
+
+if __name__ == "__main__":
+    # Instancia a classe
+    scraper = PagueMenosScraper()
+    
+    print("\n--- 🛒 Iniciando Coleta: Pague Menos ---")
+    try:
+        scraper.executar() # Ou o nome do método que inicia a lógica
+        print("✅ Processo finalizado com sucesso!")
+    except Exception as e:
+        print(f"❌ Erro durante a execução: {e}")
