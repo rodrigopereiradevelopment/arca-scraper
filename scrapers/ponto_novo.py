@@ -190,8 +190,16 @@ class PontoNovoClient(BaseScraper):
             print(f"   📊 Total em {cat_nome}: {total_categoria} produtos")
             total_geral += total_categoria
 
-        print(f"\n🏁 Processamento Finalizado!")
-        print(f"📦 Total Geral salvo: {total_geral} produtos no banco de dados.")
-
+        self.client.close() 
+        print(f"\n🏁 Ponto Novo: Concluído! Total geral: {total_geral} produtos")
+        
+        
 if __name__ == "__main__":
-    PontoNovoClient().executar()
+    scraper = PontoNovoScraper()
+    print("\n--- 🛒 Iniciando Coleta: Ponto Novo ---")
+    try:
+        scraper.executar()
+        print("✅ Processo finalizado com sucesso!")
+    except Exception as e:
+        print(f"❌ Erro durante a execução: {e}")
+

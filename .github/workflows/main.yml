@@ -1,6 +1,13 @@
 name: CI Arca Scraper
 
-on: [push]
+on:
+  push:
+    branches: [ main ]  # Roda sempre que você der push na branch principal
+  schedule:
+    # Agendamento: 03:00 UTC é 00:00 AM no horário de Brasília (UTC-3)
+    # Roda toda madrugada de Domingo para Segunda
+    - cron: '0 3 * * 1'
+  workflow_dispatch:    # Permite que você rode o bot manualmente pelo site do GitHub
 
 jobs:
   build:
@@ -15,20 +22,25 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: Instalar dependências de teste
+    - name: Instalar dependências
       run: |
         python -m pip install --upgrade pip
-        pip install flake8 requests pymongo
+        # Instala as ferramentas de teste e as libs necessárias para o main.py
+        pip install flake8 requests pymongo beautifulsoup4
 
     - name: Verificar erros de sintaxe (Lint)
       run: |
-        # Para o robô parar se encontrar erros críticos (SyntaxError)
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         
-    - name: Verificar estilo e complexidade
+    - name: Executar Scraper (O Maestro)
+      env:
+        # Mapeamento das chaves secretas configuradas no GitHub
+        MONGO_URI: ${{ secrets.MONGO_URI }}
+        API_AUTHORIZATION_TOKEN: ${{ secrets.API_AUTHORIZATION_TOKEN }}
+        OUTRA_CHAVE: ${{ secrets.OUTRA_CHAVE }}
+        PYTHONPATH: .
       run: |
-        # Avisa sobre estilo, mas não "quebra" o build (exit-zero)
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        python main.py
 
     - name: Finalizado
-      run: echo "✅ Análise de código concluída!"
+      run: echo "✅ Coleta e análise concluídas com sucesso!"

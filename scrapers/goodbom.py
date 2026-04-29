@@ -160,7 +160,16 @@ class GoodBomScraper(BaseScraper):
 
             print(f"   🏁 {cat_nome}: {total_salvos} produtos no total")
 
-        print("\n🏁 GoodBom: Concluído!")
-
+        self.client.close() 
+        print(f"\n🏁 Good Bom: Concluído! Total geral: {total_geral} produtos")
+        
+        
 if __name__ == "__main__":
-    GoodBomScraper().executar()
+    scraper = GoodBomScraper()
+    print("\n--- 🛒 Iniciando Coleta: Good Bom ---")
+    try:
+        scraper.executar()
+        print("✅ Processo finalizado com sucesso!")
+    except Exception as e:
+        print(f"❌ Erro durante a execução: {e}")
+

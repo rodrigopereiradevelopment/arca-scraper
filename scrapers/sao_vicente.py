@@ -201,5 +201,15 @@ class SaoVicenteScraper(BaseScraper):
 
             print(f"   📊 Total {nome_cat}: {total_cat} produtos")
 
-        self.client.close() # Importante fechar a conexão no final
+        self.client.close() 
         print(f"\n🏁 São Vicente: Concluído! Total geral: {total_geral} produtos")
+        
+        
+if __name__ == "__main__":
+    scraper = SaoVicenteScraper()
+    print("\n--- 🛒 Iniciando Coleta: São Vicente ---")
+    try:
+        scraper.executar()
+        print("✅ Processo finalizado com sucesso!")
+    except Exception as e:
+        print(f"❌ Erro durante a execução: {e}")
