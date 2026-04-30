@@ -73,20 +73,21 @@ class GoodBomScraper(BaseScraper):
             texto
         )
 
-    def executar(self):
+    def executar(self):  
         db = self.conectar()
         if db is None:
             return
 
         print("🚀 GoodBom: Iniciando extração...")
+        
+        total_geral = 0  
 
         for slug in self.categorias:
-            # Tratamento visual do nome da categoria
             cat_nome = slug.rsplit("-", 1)[0].upper().replace("-", " ")
             print(f"\n📦 Categoria: {cat_nome}")
 
             pagina = 1
-            total_salvos = 0
+            total_salvos_categoria = 0 
 
             while True:
                 texto = self.buscar_pagina(slug, pagina)
@@ -94,7 +95,6 @@ class GoodBomScraper(BaseScraper):
                     break
 
                 produtos_raw = self.parsear(texto, slug)
-
                 if not produtos_raw:
                     break
 
@@ -110,7 +110,6 @@ class GoodBomScraper(BaseScraper):
                         if preco_final == 0:
                             continue
 
-                        # Decodifica caracteres escapados (ex: \u00e7 -> ç)
                         try:
                             nome_limpo = nome_raw.encode().decode('unicode_escape')
                         except Exception:
@@ -148,21 +147,23 @@ class GoodBomScraper(BaseScraper):
                 if batch_p:
                     db['produtos'].bulk_write(batch_p)
                     db['historico_precos'].insert_many(batch_h)
-                    total_salvos += len(batch_p)
-                    print(f"   ✅ Pág {pagina}: {len(batch_p)} produtos salvos")
+                    
+                    quantidade_batch = len(batch_p)
+                    total_salvos_categoria += quantidade_batch
+                    total_geral += quantidade_batch 
+                    
+                    print(f"   ✅ Pág {pagina}: {quantidade_batch} produtos salvos")
 
-                # Regra de parada (GoodBom usa lotes de 30)
                 if len(produtos_raw) < 30:
                     break
 
                 pagina += 1
-                time.sleep(1)  # Delay ético para não sobrecarregar
+                time.sleep(1)
 
-            print(f"   🏁 {cat_nome}: {total_salvos} produtos no total")
+            print(f"   🏁 {cat_nome}: {total_salvos_categoria} produtos no total")
 
         self.client.close() 
         print(f"\n🏁 Good Bom: Concluído! Total geral: {total_geral} produtos")
-        
         
 if __name__ == "__main__":
     scraper = GoodBomScraper()

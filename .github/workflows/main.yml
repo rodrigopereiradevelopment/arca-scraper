@@ -36,7 +36,7 @@ jobs:
       env:
         # Mapeamento das chaves secretas configuradas no GitHub
         MONGO_URI: ${{ secrets.MONGO_URI }}
-        API_AUTHORIZATION_TOKEN: ${{ secrets.API_AUTHORIZATION_TOKEN }}
+        IMPERIAL_TOKEN: ${{ secrets.API_AUTHORIZATION_TOKEN }}
         OUTRA_CHAVE: ${{ secrets.OUTRA_CHAVE }}
         PYTHONPATH: .
       run: |

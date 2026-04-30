@@ -204,7 +204,7 @@ class SaoVicenteScraper(BaseScraper):
         self.client.close() 
         print(f"\n🏁 São Vicente: Concluído! Total geral: {total_geral} produtos")
         
-        
+    # Pra rodar manual ou automatico    
 if __name__ == "__main__":
     scraper = SaoVicenteScraper()
     print("\n--- 🛒 Iniciando Coleta: São Vicente ---")

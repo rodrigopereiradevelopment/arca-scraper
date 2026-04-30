@@ -5,7 +5,7 @@ from scrapers.goodbom import GoodBomScraper
 from scrapers.paguemenos import PagueMenosScraper
 from scrapers.imperial import ImperialScraper
 from scrapers.atacadao import AtacadaoScraper
-from scrapers.ponto_novo import PontoNovoClient
+from scrapers.ponto_novo import PontoNovoScraper
 from scrapers.sao_vicente import SaoVicenteScraper
 
 def executar_pipeline_arca():
@@ -19,7 +19,7 @@ def executar_pipeline_arca():
         {"nome": "São Vicente", "instancia": SaoVicenteScraper()},
         {"nome": "Pague Menos", "instancia": PagueMenosScraper()},
         {"nome": "Atacadão",    "instancia": AtacadaoScraper()},
-        {"nome": "Ponto Novo",  "instancia": PontoNovoClient()},
+        {"nome": "Ponto Novo",  "instancia": PontoNovoScraper()},
         {"nome": "Imperial",    "instancia": ImperialScraper()},
         {"nome": "GoodBom",     "instancia": GoodBomScraper()}, # O maratonista por último
     ]

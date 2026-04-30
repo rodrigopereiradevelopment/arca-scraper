@@ -1,12 +1,26 @@
-beautifulsoup4==4.14.3
+
+# --- Core & Network ---
+requests==2.33.1
+urllib3==2.6.3
 certifi==2026.2.25
 charset-normalizer==3.4.7
-dnspython==2.8.0
 idna==3.11
-pymongo==4.16.0
-playwright-stealth
-python-dotenv==1.2.2
-requests==2.33.1
+
+# --- Parsing & Data Cleaning ---
+beautifulsoup4==4.14.3
 soupsieve==2.8.3
+ftfy==6.3.1
+python-slugify==8.0.4
+unicodedata2==15.1.0
+
+# --- Database & Environment ---
+pymongo==4.16.0
+dnspython==2.8.0
+python-dotenv==1.2.2
+
+# --- Browser Automation (Se necessário) ---
+playwright==1.49.0
+playwright-stealth
+
+# --- Helpers ---
 typing_extensions==4.15.0
-urllib3==2.6.3

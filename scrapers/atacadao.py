@@ -228,7 +228,17 @@ class AtacadaoScraper(BaseScraper):
                 if after >= total_cat: break
                 time.sleep(0.3)
 
-        print(f"\n🏁 Atacadão finalizado! Total: {total_geral} produtos")
-
+        self.client.close() 
+        print(f"\n🏁 Atacadão: Concluído! Total geral: {total_geral} produtos")
+        
+        
 if __name__ == "__main__":
-    AtacadaoScraper().executar()
+    scraper = AtacadaoScraper()
+    print("\n--- 🛒 Iniciando Coleta: Atacadão ---")
+    try:
+        scraper.executar()
+        print("✅ Processo finalizado com sucesso!")
+    except Exception as e:
+        print(f"❌ Erro durante a execução: {e}")
+
+

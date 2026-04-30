@@ -94,7 +94,6 @@ class ImperialScraper(BaseScraper):
                 if isinstance(ret, dict) and "subcategory" in ret:
                     sub_ids = [int(s["id_subcategoria"]) for s in ret["subcategory"]]
             
-            # 2. Varredura profunda (O Pulo do Gato para pegar a totalidade)
             if not sub_ids:
                 print(f"   ⚠️ Varredura ativa (Range 0-60)...")
                 sub_ids = sorted(list(set([0, cat_id] + list(range(1, 61)))))
@@ -185,7 +184,17 @@ class ImperialScraper(BaseScraper):
             print(f"   📊 TOTAL {cat_nome}: {total_categoria} produtos.")
             total_geral += total_categoria
 
-        print(f"\n🏁 FINALIZADO! Total Geral: {total_geral} produtos salvos.")
-
+        self.client.close() 
+        print(f"\n🏁 Imperial: Concluído! Total geral: {total_geral} produtos")
+        
+        
 if __name__ == "__main__":
-    ImperialScraper().executar()
+    scraper = ImperialScraper()
+    print("\n--- 🛒 Iniciando Coleta: Imperial ---")
+    try:
+        scraper.executar()
+        print("✅ Processo finalizado com sucesso!")
+    except Exception as e:
+        print(f"❌ Erro durante a execução: {e}")
+
+

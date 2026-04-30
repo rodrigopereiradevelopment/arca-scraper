@@ -31,7 +31,7 @@ def normalizar_nome(nome):
     nome = ''.join(c for c in nome if not unicodedata.combining(c))
     return re.sub(r'\s+', ' ', nome).strip().upper()
 
-class PontoNovoClient(BaseScraper):
+class PontoNovoScraper(BaseScraper):
     def __init__(self):
         super().__init__()
         self.api     = "https://api.mobilesim.com.br"
