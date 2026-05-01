@@ -51,6 +51,7 @@ class AtacadaoScraper(BaseScraper):
     def obter_categorias_dinamicas(self):
         print("🔍 Mapeando árvore do Atacadão (Foco em Profundidade 2 para compatibilidade)...")
         try:
+            time.sleep(2)
             res = requests.get(self.url_tree, headers=self.headers, timeout=20)
             if res.status_code != 200: return []
             
