@@ -1,5 +1,6 @@
 import time
-from datetime import datetime, timedelta
+from datetime import timedelta
+from datetime import datetime
 
 from scrapers.goodbom import GoodBomScraper
 from scrapers.paguemenos import PagueMenosScraper
@@ -8,6 +9,9 @@ from scrapers.atacadao import AtacadaoScraper
 from scrapers.ponto_novo import PontoNovoScraper
 from scrapers.sao_vicente import SaoVicenteScraper
 
+# Importa a função de limpeza que criamos
+from limpeza_silver import processar_e_salvar_mongodb
+
 def executar_pipeline_arca():
     inicio_geral = time.time()
     data_hora_inicio = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
@@ -15,13 +19,12 @@ def executar_pipeline_arca():
     print(f"--- 🚀 INICIANDO PIPELINE ARCA: {data_hora_inicio} ---")
 
     mercados = [
-        # Coloque os mais rápidos primeiro para garantir os dados essenciais cedo
         {"nome": "São Vicente", "instancia": SaoVicenteScraper()},
         {"nome": "Pague Menos", "instancia": PagueMenosScraper()},
         {"nome": "Atacadão",    "instancia": AtacadaoScraper()},
         {"nome": "Ponto Novo",  "instancia": PontoNovoScraper()},
         {"nome": "Imperial",    "instancia": ImperialScraper()},
-        {"nome": "GoodBom",     "instancia": GoodBomScraper()}, # O maratonista por último
+        {"nome": "GoodBom",     "instancia": GoodBomScraper()},
     ]
 
     tempos = []
@@ -57,6 +60,14 @@ def executar_pipeline_arca():
     print("-" * 40)
     print(f"Tempo Total de Execução: {timedelta(seconds=tempo_total_segundos)}")
     print("="*40)
+
+    # --- ETAPA 2: CAMADA SILVER ---
+    print("\n--- 🧹 INICIANDO LIMPEZA E PADRONIZAÇÃO (CAMADA SILVER) ---")
+    try:
+        processar_e_salvar_mongodb()
+        print("🎉 Camada Silver atualizada com sucesso pelo pipeline!")
+    except Exception as e:
+        print(f"❌ Erro ao executar a limpeza Silver: {e}")
 
 if __name__ == "__main__":
     executar_pipeline_arca()
