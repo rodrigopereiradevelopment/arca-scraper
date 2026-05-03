@@ -1,8 +1,8 @@
 import os
-from pymongo import MongoClient, UpdateOne
+import time
 import re
-import time  # ← ADICIONADO
-from datetime import datetime, timedelta  # ← timedelta adicionado
+from datetime import datetime, timedelta
+from pymongo import MongoClient, UpdateOne
 from dotenv import load_dotenv
 import ftfy
 
@@ -13,17 +13,14 @@ if not MONGO_URI:
     raise ValueError("⚠️ MONGO_URI não encontrada no arquivo .env.")
 
 client = MongoClient(MONGO_URI)
-db        = client["arca_bronze"]
+db_bronze = client["arca_bronze"]
 db_silver = client["arca_silver"]
 
-collection_produtos  = db["produtos"]
-collection_silver_produtos  = db_silver["produtos"]
-collection_silver_historico = db_silver["historico_precos"]
+col_bronze_prod = db_bronze["produtos"]
+col_silver_prod = db_silver["produtos"]
+col_silver_hist = db_silver["historico_precos"]
 
 
-# ──────────────────────────────────────────────
-# FUNÇÕES DE LIMPEZA
-# ──────────────────────────────────────────────
 def corrigir_encoding(texto: str) -> str:
     if not texto:
         return ""
@@ -39,15 +36,20 @@ def limpar_texto(texto):
     return " ".join(texto_limpo.split()).upper()
 
 
-def padronizar_unidade(valor_str):
-    if not valor_str:
+def padronizar_unidade(texto_busca):
+    """
+    Extrai quantidade e unidade do TEXTO (nome do produto).
+    Ex: 'ARROZ 5KG' → (5.0, 'KG')
+    """
+    if not texto_busca:
         return None, 'UN'
-    valor_str = str(valor_str).lower().strip()
-
-    match_kg = re.search(r'(\d+[\.,]?\d*)\s*(kg|quilo|kilos)', valor_str)
-    match_g  = re.search(r'(\d+[\.,]?\d*)\s*(g|gramas)', valor_str)
-    match_l  = re.search(r'(\d+[\.,]?\d*)\s*(l|litro|litros)', valor_str)
-    match_ml = re.search(r'(\d+[\.,]?\d*)\s*(ml|mililitros)', valor_str)
+    
+    t = str(texto_busca).lower().strip()
+    
+    match_kg = re.search(r'(\d+[\.,]?\d*)\s*(kg|quilo|kilos)', t)
+    match_g  = re.search(r'(\d+[\.,]?\d*)\s*(g|gramas)', t)
+    match_l  = re.search(r'(\d+[\.,]?\d*)\s*(l|litro|litros)', t)
+    match_ml = re.search(r'(\d+[\.,]?\d*)\s*(ml|mililitros)', t)
 
     if match_kg:
         return float(match_kg.group(1).replace(',', '.')), 'KG'
@@ -74,11 +76,8 @@ def limpar_preco(preco_str):
         return 0.0
 
 
-# ──────────────────────────────────────────────
-# PROCESSAMENTO PRINCIPAL (COM CRONÔMETRO)
-# ──────────────────────────────────────────────
 def processar_e_salvar_mongodb():
-    inicio_limpeza = time.time()
+    inicio_geral = time.time()
     chunk_size = 1000
     data_hoje = datetime.now().strftime("%Y-%m-%d")
 
@@ -87,30 +86,42 @@ def processar_e_salvar_mongodb():
     print(f"   Início: {datetime.now().strftime('%H:%M:%S')}")
     print("=" * 40)
 
-    # ── 1. Produtos: Bronze → Silver ──────────────────────────────────────
-    inicio_prod = time.time()
-    total_produtos = collection_produtos.count_documents({})
-    print(f"\n📦 Processando {total_produtos:,} produtos (bronze → silver)...")
+    # ─── 1. ÍNDICES CRIADOS ANTES (evita lentidão no upsert) ───
+    print("📇 Criando/verificando índices...")
+    col_silver_prod.create_index([("nome_padronizado", 1), ("supermercado", 1)])
+    col_silver_hist.create_index(
+        [("nome_padronizado", 1), ("supermercado", 1), ("data", 1)],
+        unique=True
+    )
 
-    lote_produtos = []
-    historico_para_salvar = []
+    # ─── 2. PROCESSAMENTO ───
+    total_bronze = col_bronze_prod.count_documents({})
+    print(f"📦 Processando {total_bronze:,} produtos (bronze → silver)...")
+
+    lote_prod = []
+    lote_hist = []
+    processados = 0
     inseridos = atualizados = 0
-    contador = 0
+    inseridos_hist = atualizados_hist = 0
 
-    for item in collection_produtos.find():
+    # batch_size evita carregar tudo na memória de uma vez
+    for item in col_bronze_prod.find().batch_size(chunk_size):
         nome_original = item.get("nome", "")
-        qtde, unidade_medida = padronizar_unidade(item.get("unidade", ""))
+        
+        # Busca unidade no NOME (campo 'unidade' geralmente é a cidade)
+        nome_para_unidade = item.get("unidade") or nome_original
+        qtde, und = padronizar_unidade(nome_para_unidade)
 
         nome_padronizado = limpar_texto(nome_original)
         preco_limpo = limpar_preco(item.get("preco", 0.0))
         supermercado = item.get("mercado", "Desconhecido")
 
-        item_silver = {
+        doc_silver = {
             "nome_original":    corrigir_encoding(nome_original),
             "nome_padronizado": nome_padronizado,
             "preco":            preco_limpo,
             "supermercado":     supermercado,
-            "unidade_medida":   unidade_medida,
+            "unidade_medida":   und,
             "quantidade":       qtde,
             "ean":              item.get("ean", "N/A"),
             "categoria":        item.get("categoria", "GERAL"),
@@ -119,95 +130,50 @@ def processar_e_salvar_mongodb():
             "data_extracao":    item.get("data_extracao", datetime.now()),
         }
 
-        lote_produtos.append(UpdateOne(
-            {
-                "nome_padronizado": nome_padronizado,
-                "supermercado":     supermercado,
-            },
-            {"$set": item_silver},
+        lote_prod.append(UpdateOne(
+            {"nome_padronizado": nome_padronizado, "supermercado": supermercado},
+            {"$set": doc_silver},
             upsert=True
         ))
 
-        # Gera histórico SÓ pra esse produto (data de hoje)
-        historico_para_salvar.append({
-            "nome_padronizado": nome_padronizado,
-            "supermercado":     supermercado,
-            "preco":            preco_limpo,
-            "data":             data_hoje,
-        })
+        lote_hist.append(UpdateOne(
+            {"nome_padronizado": nome_padronizado, "supermercado": supermercado, "data": data_hoje},
+            {"$set": {"preco": preco_limpo, "data": data_hoje}},
+            upsert=True
+        ))
 
-        contador += 1
+        processados += 1
 
-        # Bulk write a cada chunk
-        if len(lote_produtos) >= chunk_size:
-            resultado = collection_silver_produtos.bulk_write(lote_produtos)
-            inseridos   += resultado.upserted_count
-            atualizados += resultado.modified_count
-            lote_produtos = []
+        # Bulk write a cada chunk → libera memória
+        if len(lote_prod) >= chunk_size:
+            r1 = col_silver_prod.bulk_write(lote_prod)
+            r2 = col_silver_hist.bulk_write(lote_hist)
+            inseridos += r1.upserted_count
+            atualizados += r1.modified_count
+            inseridos_hist += r2.upserted_count
+            atualizados_hist += r2.modified_count
+            lote_prod, lote_hist = [], []
             
-            # Progresso
-            pct = (contador / total_produtos) * 100
-            print(f"   🔄 {contador:,}/{total_produtos:,} ({pct:.1f}%)")
+            pct = (processados / total_bronze) * 100
+            print(f"   🔄 {processados:,}/{total_bronze:,} ({pct:.1f}%)")
 
     # Último lote
-    if lote_produtos:
-        resultado = collection_silver_produtos.bulk_write(lote_produtos)
-        inseridos   += resultado.upserted_count
-        atualizados += resultado.modified_count
+    if lote_prod:
+        r1 = col_silver_prod.bulk_write(lote_prod)
+        r2 = col_silver_hist.bulk_write(lote_hist)
+        inseridos += r1.upserted_count
+        atualizados += r1.modified_count
+        inseridos_hist += r2.upserted_count
+        atualizados_hist += r2.modified_count
 
-    duracao_prod = int(time.time() - inicio_prod)
-    print(f"✅ Produtos — inseridos: {inseridos:,} | atualizados: {atualizados:,}")
-    print(f"   ⏱️  Tempo: {timedelta(seconds=duracao_prod)}")
+    duracao_total = int(time.time() - inicio_geral)
 
-    # ── 2. Histórico ─────────────────────────────────────────────────────
-    inicio_hist = time.time()
-    print(f"\n📊 Salvando {len(historico_para_salvar):,} registros de histórico no silver...")
-
-    lote_hist = []
-    inseridos_hist = atualizados_hist = 0
-
-    for h in historico_para_salvar:
-        lote_hist.append(UpdateOne(
-            {
-                "nome_padronizado": h["nome_padronizado"],
-                "supermercado":     h["supermercado"],
-                "data":             h["data"],
-            },
-            {"$set": h},
-            upsert=True
-        ))
-
-        if len(lote_hist) >= chunk_size:
-            resultado = collection_silver_historico.bulk_write(lote_hist)
-            inseridos_hist   += resultado.upserted_count
-            atualizados_hist += resultado.modified_count
-            lote_hist = []
-
-    if lote_hist:
-        resultado = collection_silver_historico.bulk_write(lote_hist)
-        inseridos_hist   += resultado.upserted_count
-        atualizados_hist += resultado.modified_count
-
-    duracao_hist = int(time.time() - inicio_hist)
+    print(f"\n✅ Produtos — inseridos: {inseridos:,} | atualizados: {atualizados:,}")
     print(f"✅ Histórico — inseridos: {inseridos_hist:,} | atualizados: {atualizados_hist:,}")
-    print(f"   ⏱️  Tempo: {timedelta(seconds=duracao_hist)}")
 
-    # ── 3. Índices ───────────────────────────────────────────────────────
-    collection_silver_produtos.create_index([("nome_padronizado", 1)])
-    collection_silver_produtos.create_index([("supermercado", 1)])
-    collection_silver_historico.create_index([
-        ("nome_padronizado", 1),
-        ("supermercado", 1),
-        ("data", 1)
-    ], unique=True)
-
-    # ── Resumo Final ─────────────────────────────────────────────────────
-    duracao_total = int(time.time() - inicio_limpeza)
     print("\n" + "=" * 40)
     print("📊 RESUMO DA LIMPEZA SILVER")
     print("=" * 40)
-    print(f"   Produtos:   {timedelta(seconds=duracao_prod)}")
-    print(f"   Histórico:  {timedelta(seconds=duracao_hist)}")
     print(f"   TOTAL:      {timedelta(seconds=duracao_total)}")
     print("=" * 40)
     print("🎉 Processamento concluído com sucesso!")
