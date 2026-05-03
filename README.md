@@ -1,4 +1,3 @@
-
 # 🛒 ARCA - Comparação de Preços (Mogi Mirim)
 
 ![Pipeline Status](https://github.com/rodrigopereiradevelopment/arca-scraper/actions/workflows/ci.yml/badge.svg)
@@ -22,12 +21,13 @@ O **ARCA** é um ecossistema de captura e análise de dados focado no varejo de 
 ---
 
 ## 🧠 Arquitetura de Dados (Bronze → Silver → Gold)
-arca_bronze (dados crus) → limpeza_silver.py → arca_silver (dados padronizados)
-│ │
-6 scrapers arca-ionic (app mobile)
-(upsert diário) (consome via Supabase)
 
-text
+```
+arca_bronze (dados crus) → limpeza_silver.py → arca_silver (dados padronizados)
+│                                                        │
+6 scrapers                                        arca-ionic (app mobile)
+(upsert diário)                                   (consome via Supabase)
+```
 
 ---
 
@@ -52,7 +52,7 @@ text
 
 - **Linguagem:** Python 3.12
 - **Banco de Dados:** MongoDB Atlas (Cloud NoSQL)
-- **Bibliotecas:** requests, pymongo, beautifulsoup4, ftfy, python-dotenv
+- **Bibliotecas:** `requests`, `pymongo`, `beautifulsoup4`, `ftfy`, `python-dotenv`
 - **CI/CD:** GitHub Actions (execução semanal automática)
 - **Dev:** Linux Mint (Desktop) + Termux (Mobile)
 
@@ -61,26 +61,41 @@ text
 ## 🚀 Instalação e Uso
 
 ### 1. Clonar o repositório
+
 ```bash
 git clone https://github.com/rodrigopereiradevelopment/arca-scraper.git
 cd arca-scraper
-2. Criar ambiente virtual
-bash
+```
+
+### 2. Criar ambiente virtual
+
+```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-3. Configurar .env
-Crie um arquivo .env na raiz do projeto:
+```
 
-env
+### 3. Configurar `.env`
+
+Crie um arquivo `.env` na raiz do projeto:
+
+```env
 MONGO_URI=mongodb+srv://<USUARIO>:<SENHA>@arca-cluster.xo5yomu.mongodb.net/
 IMPERIAL_TOKEN=seu_token_aqui
 API_AUTHORIZATION_TOKEN=seu_token_aqui
-4. Executar
-bash
+```
+
+### 4. Executar
+
+```bash
 python3 main.py
-📊 Estrutura do Projeto
-text
+```
+
+---
+
+## 📊 Estrutura do Projeto
+
+```
 arca-scraper/
 ├── scrapers/
 │   ├── base_scraper.py      # Classe base (conexão, normalização, upsert)
@@ -94,36 +109,42 @@ arca-scraper/
 ├── main.py                  # Orquestrador principal
 ├── requirements.txt
 └── .github/workflows/       # CI/CD (segunda-feira 00:00 BRT)
-🔄 Pipeline Automatizado
+```
+
+---
+
+## 🔄 Pipeline Automatizado
+
 O GitHub Actions executa automaticamente:
 
-Schedule: Toda segunda-feira às 00:00 (horário de Brasília)
+- **Schedule:** Toda segunda-feira às 00:00 (horário de Brasília)
+- **Push:** A cada novo commit na branch `main`
+- **Manual:** Via botão "Run workflow" no GitHub
 
-Push: A cada novo commit na branch main
+Tempo médio: **~3h20** (limite: 6h)
 
-Manual: Via botão "Run workflow" no GitHub
+---
 
-Tempo médio: ~3h20 (limite: 6h)
+## ⚠️ Aviso Ético e Legal
 
-⚠️ Aviso Ético e Legal
 Este projeto foi desenvolvido para fins educacionais como Trabalho de Conclusão de Curso (TCC) na ETEC Pedro Ferreira Alves.
 
-✅ Respeita intervalos de requisição (time.sleep)
+- ✅ Respeita intervalos de requisição (`time.sleep`)
+- ✅ User-Agent identificado como bot acadêmico
+- ✅ Dados coletados são de domínio público
+- ✅ Sem intenção de sobrecarregar servidores
 
-✅ User-Agent identificado como bot acadêmico
+---
 
-✅ Dados coletados são de domínio público
+## 📄 Licença
 
-✅ Sem intenção de sobrecarregar servidores
+Este projeto está sob a licença MIT — veja o arquivo `LICENSE` para detalhes.
 
-📄 Licença
-Este projeto está sob a licença MIT — veja o arquivo LICENSE para detalhes.
+---
 
-👤 Autor
-Rodrigo Pereira
+## 👤 Autor
 
-GitHub: @rodrigopereiradevelopment
-
-Contato: rodrigopereira.development@gmail.com
-
-Projeto relacionado: arca-ionic (App Mobile)
+**Rodrigo Pereira**  
+GitHub: [@rodrigopereiradevelopment](https://github.com/rodrigopereiradevelopment)  
+Contato: [rodrigopereira.development@gmail.com](mailto:rodrigopereira.development@gmail.com)  
+Projeto relacionado: [arca-ionic](https://github.com/rodrigopereiradevelopment/arca-ionic) (App Mobile)
