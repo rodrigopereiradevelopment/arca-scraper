@@ -1,6 +1,6 @@
 # 🛒 ARCA - Comparação de Preços (Mogi Mirim)
 
-[![Pipeline Status](https://github.com/rodrigopereiradevelopment/arca-scraper/actions/workflows/ci.yml/badge.svg)](https://github.com/rodrigopereiradevelopment/arca-scraper/actions/workflows/ci.yml)
+[![Pipeline Status](https://github.com/rodrigopereiradevelopment/arca-scraper/actions/workflows/main.yml/badge.svg)](https://github.com/rodrigopereiradevelopment/arca-scraper/actions/workflows/ci.yml)
 
 O **ARCA** é um ecossistema de captura e análise de dados focado no varejo de Mogi Mirim. O objetivo é centralizar preços de **6 grandes redes de supermercados**, permitindo uma comparação precisa para o consumidor final.
 
