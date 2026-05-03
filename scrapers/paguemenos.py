@@ -16,18 +16,9 @@
 import requests
 from bs4 import BeautifulSoup
 import json
-import re
 import time
-import unicodedata
 from datetime import datetime
-from pymongo import UpdateOne
 from scrapers.base_scraper import BaseScraper
-
-def normalizar_nome(nome):
-    if not nome: return "N/A"
-    nome = unicodedata.normalize('NFKD', nome)
-    nome = ''.join(c for c in nome if not unicodedata.combining(c))
-    return re.sub(r'\s+', ' ', nome).strip().upper()
 
 BASE = "https://www.superpaguemenos.com.br"
 
@@ -53,9 +44,15 @@ HEADERS = {
     'Accept-Language': 'pt-BR,pt;q=0.9',
 }
 
+
 def extrair_produtos_pagina(soup, cat):
+    """
+    Extrai produtos de uma página HTML do Pague Menos.
+    Retorna lista de dicionários com dados brutos (não normalizados).
+    """
     produtos = []
     forms = soup.find_all('form', class_='product-form')
+    
     for form in forms:
         try:
             data = json.loads(form.get('data-json', '{}'))
@@ -72,28 +69,27 @@ def extrair_produtos_pagina(soup, cat):
                 continue
 
             produtos.append({
-                "id_origem": slug,
+                "id_origem": str(data.get('item_id', slug)),  # Prefere item_id numérico
                 "ean": "N/A",
-                "nome": nome.upper(),
-                "nome_normalizado": normalizar_nome(nome),
-                "marca": data.get('item_brand', 'N/A').upper(),
-                "categoria": data.get('item_category1', cat).upper(),
+                "nome": nome,
+                "marca": data.get('item_brand', 'N/A'),
+                "categoria": data.get('item_category1', cat),
                 "subcategoria": data.get('item_category2', ''),
                 "preco": preco,
-                "mercado": "PagueMenos",
-                "unidade": "Mogi Mirim",
                 "url_imagem": url_img,
                 "url_produto": url,
-                "data_extracao": datetime.now(),
-                "status": "bronze"
             })
         except:
             continue
+    
     return produtos
+
 
 class PagueMenosScraper(BaseScraper):
     def __init__(self):
         super().__init__()
+        self.mercado = "PagueMenos"
+        self.unidade = "Mogi Mirim"
 
     def executar(self):
         db = self.conectar()
@@ -102,6 +98,7 @@ class PagueMenosScraper(BaseScraper):
             return
 
         total_geral = 0
+
         for cat, qtd in CATEGORIAS.items():
             paginas_estimadas = (qtd // 30) + 5
             print(f"\n📦 {cat} (~{qtd} produtos)")
@@ -128,33 +125,41 @@ class PagueMenosScraper(BaseScraper):
                         break
                     ultima_sig = sig
 
-                    produtos = extrair_produtos_pagina(soup, cat)
+                    produtos_raw = extrair_produtos_pagina(soup, cat)
 
-                    for prod in produtos:
-                        bulk_produtos.append(
-                            UpdateOne(
-                                {"id_origem": prod["id_origem"], "mercado": "PagueMenos"},
-                                {"$set": prod},
-                                upsert=True
-                            )
+                    for item in produtos_raw:
+                        # ─── USA A NOVA BASE SCRAPER ───
+                        produto = BaseScraper.criar_produto(
+                            id_origem=item["id_origem"],
+                            ean=item["ean"],
+                            nome=item["nome"],
+                            marca=item["marca"],
+                            categoria=item["categoria"].upper(),
+                            subcategoria=item["subcategoria"],
+                            preco=item["preco"],
+                            preco_original=None,  # Site não mostra desconto
+                            mercado=self.mercado,
+                            unidade=self.unidade,
+                            url_imagem=item["url_imagem"],
+                            url_produto=item["url_produto"],
+                            is_kg=0,
                         )
-                        bulk_historico.append({
-                            "nome": prod["nome"],
-                            "preco": prod["preco"],
-                            "mercado": "PagueMenos",
-                            "data": datetime.now()
-                        })
 
-                    cat_total += len(produtos)
+                        bulk_produtos.append(self.criar_upsert_produto(produto))
+                        bulk_historico.append(
+                            self.criar_historico(item["id_origem"], item["preco"], self.mercado)
+                        )
+
+                    cat_total += len(produtos_raw)
 
                     if len(bulk_produtos) >= 50:
                         db['produtos'].bulk_write(bulk_produtos)
-                        db['historico_precos'].insert_many(bulk_historico)
+                        self.salvar_historico(db, bulk_historico)
                         print(f"   💾 {cat_total} produtos salvos...")
                         bulk_produtos = []
                         bulk_historico = []
 
-                    print(f"   pág {p}: {len(produtos)} produtos")
+                    print(f"   pág {p}: {len(produtos_raw)} produtos")
                     time.sleep(0.6)
 
                 except Exception as e:
@@ -163,15 +168,15 @@ class PagueMenosScraper(BaseScraper):
 
             if bulk_produtos:
                 db['produtos'].bulk_write(bulk_produtos)
-                db['historico_precos'].insert_many(bulk_historico)
+                self.salvar_historico(db, bulk_historico)
 
             total_geral += cat_total
             print(f"   ✅ {cat_total} produtos em {cat}")
-            
-        self.client.close() 
+
+        self.fechar()
         print(f"\n🏁 Pague Menos: Concluído! Total geral: {total_geral} produtos")
-        
-        
+
+
 if __name__ == "__main__":
     scraper = PagueMenosScraper()
     print("\n--- 🛒 Iniciando Coleta: Pague Menos ---")
@@ -180,6 +185,3 @@ if __name__ == "__main__":
         print("✅ Processo finalizado com sucesso!")
     except Exception as e:
         print(f"❌ Erro durante a execução: {e}")
-
-
-        

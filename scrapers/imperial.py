@@ -1,7 +1,7 @@
 """
 ╔═══════════════════════════════════════════════════════════════════════════╗
 ║           PROJETO ARCA - Comparação de Preços                             ║
-║                    Bot Acadêmico                                          ║
+║                    Bot Acadêmico - Imperial                               ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║ Este bot coleta preços para TCC na ETEC Pedro Ferreira Alves              ║
 ║ Objetivo: acessibilidade no consumo e ciência de dados                    ║
@@ -15,21 +15,13 @@
 
 import requests
 import time
-import re
-import unicodedata
 import os
 from datetime import datetime
-from pymongo import UpdateOne
 from scrapers.base_scraper import BaseScraper
 from dotenv import load_dotenv
 
 load_dotenv()
 
-def normalizar_nome(nome):
-    if not nome: return "N/A"
-    nome = unicodedata.normalize('NFKD', nome)
-    nome = ''.join(c for c in nome if not unicodedata.combining(c))
-    return re.sub(r'\s+', ' ', nome).strip().upper()
 
 class ImperialScraper(BaseScraper):
     def __init__(self):
@@ -54,7 +46,11 @@ class ImperialScraper(BaseScraper):
             "origin": "https://onlinesim.com.br"
         }
 
+    # ────────────────────────────────────────
+    # MÉTODOS AUXILIARES
+    # ────────────────────────────────────────
     def get(self, url):
+        """Requisição GET com headers padrão"""
         try:
             res = requests.get(url, headers=self.headers, timeout=15)
             if res.status_code == 200:
@@ -63,14 +59,18 @@ class ImperialScraper(BaseScraper):
             print(f"   ❌ Erro: {e}")
         return None
 
+    # ────────────────────────────────────────
+    # EXECUÇÃO PRINCIPAL
+    # ────────────────────────────────────────
     def executar(self):
         db = self.conectar()
-        if db is None: return
+        if db is None:
+            return
 
         print(f"🚀 {self.mercado}: Iniciando extração profunda...")
 
         tabs_data = self.get(f"{self.api}/user/v1.02/tabs")
-        if not tabs_data or not tabs_data.get("return"): 
+        if not tabs_data or not tabs_data.get("return"):
             print("❌ Não foi possível carregar as abas principais.")
             return
 
@@ -86,14 +86,14 @@ class ImperialScraper(BaseScraper):
             cat_id, cat_nome = cat["id"], cat["name"]
             print(f"\n📂 CATEGORIA: {cat_nome.upper()} (ID: {cat_id})")
 
-            # 1. Tenta obter subcategorias oficiais
+            # Tenta obter subcategorias oficiais
             sub_ids = []
             subcat_data = self.get(f"{self.api}/user/v1.00/subcat/{cat_id}")
             if subcat_data and subcat_data.get("return"):
                 ret = subcat_data["return"]
                 if isinstance(ret, dict) and "subcategory" in ret:
                     sub_ids = [int(s["id_subcategoria"]) for s in ret["subcategory"]]
-            
+
             if not sub_ids:
                 print(f"   ⚠️ Varredura ativa (Range 0-60)...")
                 sub_ids = sorted(list(set([0, cat_id] + list(range(1, 61)))))
@@ -101,27 +101,30 @@ class ImperialScraper(BaseScraper):
                 print(f"   📂 Subs oficiais: {sub_ids}")
 
             total_categoria = 0
-            skus_da_categoria = set() # Evita duplicatas na mesma categoria
+            skus_da_categoria = set()
 
             for sub_id in sub_ids:
                 pagina = 0
                 itens_novos_nesta_sub = 0
-                
+
                 while True:
                     feed_url = f"{self.api}/user/v1.03/feed/{sub_id}/{pagina}/{cat_id}"
                     feed_data = self.get(feed_url)
-                    
-                    if not feed_data or not feed_data.get("return"): break
+
+                    if not feed_data or not feed_data.get("return"):
+                        break
 
                     produtos_raw = feed_data["return"].get("products", [])
-                    if not produtos_raw: break
+                    if not produtos_raw:
+                        break
 
-                    batch_p, batch_h = [], []
+                    batch_p = []
+                    batch_h = []
 
                     for p in produtos_raw:
                         id_origem = str(p.get("sku", ""))
-                        
-                        # Filtros de segurança e integridade
+
+                        # Filtros de segurança
                         if not id_origem or p.get("catid") != cat_id or id_origem in skus_da_categoria:
                             continue
 
@@ -131,38 +134,31 @@ class ImperialScraper(BaseScraper):
                             preco_clube = float(oferta.get("offer_connect", preco_base))
                             preco_final = preco_clube if 0 < preco_clube <= preco_base else preco_base
 
-                            if preco_final <= 0: continue
+                            if preco_final <= 0:
+                                continue
 
                             nome_raw = p.get("name", "N/A")
                             img_hash = p.get("imghash", "")
                             url_img  = f"https://s3.mobilesim.com.br/images/products/{img_hash}.jpg" if img_hash else ""
 
-                            produto_doc = {
-                                "id_origem":        id_origem,
-                                "ean":              str(p.get("barcode", "N/A")),
-                                "nome":             nome_raw.upper(),
-                                "nome_normalizado": normalizar_nome(nome_raw),
-                                "categoria":        cat_nome.upper(),
-                                "subcategoria_id":  sub_id,
-                                "preco":            preco_final,
-                                "preco_antigo":     preco_base if preco_final < preco_base else None,
-                                "mercado":          self.mercado,
-                                "unidade":          self.unidade,
-                                "url_imagem":       url_img,
-                                "data_extracao":    datetime.now(),
-                                "status":           "bronze"
-                            }
+                            # ─── USA A NOVA BASE SCRAPER ───
+                            produto = BaseScraper.criar_produto(
+                                id_origem=id_origem,
+                                ean=str(p.get("barcode", "N/A")),
+                                nome=nome_raw,
+                                categoria=cat_nome.upper(),
+                                subcategoria=str(sub_id),
+                                preco=preco_final,
+                                preco_original=preco_base if preco_final < preco_base else None,
+                                mercado=self.mercado,
+                                unidade=self.unidade,
+                                url_imagem=url_img,
+                                is_kg=int(p.get("is_kg", 0)),
+                            )
 
-                            batch_p.append(UpdateOne(
-                                {"id_origem": id_origem, "mercado": self.mercado},
-                                {"$set": produto_doc}, upsert=True
-                            ))
-                            batch_h.append({
-                                "id_origem": id_origem,
-                                "preco":     preco_final,
-                                "mercado":   self.mercado,
-                                "data":      datetime.now()
-                            })
+                            batch_p.append(self.criar_upsert_produto(produto))
+                            batch_h.append(self.criar_historico(id_origem, preco_final, self.mercado))
+
                             skus_da_categoria.add(id_origem)
                             itens_novos_nesta_sub += 1
 
@@ -171,10 +167,11 @@ class ImperialScraper(BaseScraper):
 
                     if batch_p:
                         db['produtos'].bulk_write(batch_p)
-                        db['historico_precos'].insert_many(batch_h)
+                        self.salvar_historico(db, batch_h)
                         total_categoria += len(batch_p)
 
-                    if len(produtos_raw) < 30: break
+                    if len(produtos_raw) < 30:
+                        break
                     pagina += 1
                     time.sleep(0.1)
 
@@ -184,10 +181,10 @@ class ImperialScraper(BaseScraper):
             print(f"   📊 TOTAL {cat_nome}: {total_categoria} produtos.")
             total_geral += total_categoria
 
-        self.client.close() 
+        self.fechar()
         print(f"\n🏁 Imperial: Concluído! Total geral: {total_geral} produtos")
-        
-        
+
+
 if __name__ == "__main__":
     scraper = ImperialScraper()
     print("\n--- 🛒 Iniciando Coleta: Imperial ---")
@@ -196,5 +193,3 @@ if __name__ == "__main__":
         print("✅ Processo finalizado com sucesso!")
     except Exception as e:
         print(f"❌ Erro durante a execução: {e}")
-
-

@@ -1,7 +1,7 @@
 """
 ╔═══════════════════════════════════════════════════════════════════════════╗
 ║           PROJETO ARCA - Comparação de Preços                             ║
-║                    Bot Acadêmico                                          ║
+║                    Bot Acadêmico - São Vicente                            ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║ Este bot coleta preços para TCC na ETEC Pedro Ferreira Alves              ║
 ║ Objetivo: acessibilidade no consumo e ciência de dados                    ║
@@ -14,25 +14,19 @@
 """
 import requests
 import time
-import re
 import urllib3
-from datetime import datetime
-from pymongo import UpdateOne
+from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from scrapers.base_scraper import BaseScraper
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-def normalizar_nome(nome):
-    import unicodedata
-    nome = unicodedata.normalize('NFKD', nome)
-    nome = ''.join(c for c in nome if not unicodedata.combining(c))
-    return re.sub(r'\s+', ' ', nome).strip().upper()
-
-
 class SaoVicenteScraper(BaseScraper):
     def __init__(self):
         super().__init__()
+        self.mercado = "São Vicente"
+        self.unidade = "Mogi Mirim"
         self.grid_url      = "https://www.svicente.com.br/on/demandware.store/Sites-SaoVicente-Site/pt_BR/Search-UpdateGrid"
         self.quickview_url = "https://www.svicente.com.br/on/demandware.store/Sites-SaoVicente-Site/pt_BR/Product-ShowQuickView"
 
@@ -65,7 +59,14 @@ class SaoVicenteScraper(BaseScraper):
             "Mundo Pet":             "014",
         }
 
+        self.max_workers = 5
+        self.delay = 0.5
+
+    # ────────────────────────────────────────
+    # MÉTODOS AUXILIARES
+    # ────────────────────────────────────────
     def buscar_ids(self, cgid, start, sz=50):
+        """Busca lista de productIDs de uma categoria (paginado)"""
         params = {
             "cgid":  cgid,
             "start": str(start),
@@ -90,6 +91,7 @@ class SaoVicenteScraper(BaseScraper):
         return [], 0
 
     def buscar_produto(self, pid, tentativas=3):
+        """Busca detalhes de 1 produto via QuickView API"""
         for i in range(tentativas):
             try:
                 res = requests.get(
@@ -101,6 +103,10 @@ class SaoVicenteScraper(BaseScraper):
                 )
                 if res.status_code == 200:
                     return res.json()
+                elif res.status_code == 429:
+                    wait = 5 * (i + 1)
+                    print(f"      ⏱️ Rate limit pid={pid}, aguardando {wait}s...")
+                    time.sleep(wait)
             except requests.exceptions.Timeout:
                 print(f"      ⏱️ Timeout pid={pid} (tentativa {i+1}/{tentativas})")
                 time.sleep(2 * (i + 1))
@@ -109,7 +115,13 @@ class SaoVicenteScraper(BaseScraper):
                 break
         return None
 
-    def parsear_produto(self, data, nome_cat):
+    def parsear_produto(self, pid, data, nome_cat):
+        """
+        Extrai dados do JSON da QuickView e retorna:
+        - produto (dict padronizado via BaseScraper)
+        - historico (dict)
+        ou None se falhar
+        """
         try:
             p = data.get("product", {})
 
@@ -124,37 +136,57 @@ class SaoVicenteScraper(BaseScraper):
             imagens = p.get("images", {}).get("large", [])
             url_img = imagens[0].get("absURL", "") if imagens else ""
 
-            return {
-                "id_origem":        p.get("id", "N/A"),
-                "nome":             nome_raw.upper(),
-                "nome_normalizado": normalizar_nome(nome_raw),
-                "marca":            p.get("brand", "N/A"),
-                "categoria":        nome_cat.upper(),
-                "preco":            float(preco),
-                "mercado":          "São Vicente",
-                "unidade":          "Mogi Mirim",
-                "url_imagem":       url_img,
-                "data_extracao":    datetime.now(),
-                "status":           "bronze"
-            }
+            # ─── USA A NOVA BASE SCRAPER ───
+            produto = BaseScraper.criar_produto(
+                id_origem=pid,
+                nome=nome_raw,
+                preco=float(preco),
+                marca=p.get("brand", "N/A"),
+                categoria=nome_cat.upper(),
+                mercado=self.mercado,
+                unidade=self.unidade,
+                url_imagem=url_img,
+            )
+
+            historico = self.criar_historico(pid, float(preco), self.mercado)
+
+            return produto, historico
+
         except Exception:
             return None
 
+    def buscar_produto_com_cat(self, args):
+        """
+        Wrapper para ThreadPoolExecutor.
+        Recebe (pid, nome_cat), retorna (produto, historico) ou None.
+        """
+        pid, nome_cat = args
+        time.sleep(self.delay)
+
+        data_prod = self.buscar_produto(pid)
+        if not data_prod:
+            return None
+
+        return self.parsear_produto(pid, data_prod, nome_cat)
+
+    # ────────────────────────────────────────
+    # EXECUÇÃO PRINCIPAL
+    # ────────────────────────────────────────
     def executar(self):
         db_mongo = self.conectar()
         if db_mongo is None:
-            print("❌ Falha na conexão com MongoDB") # Adicione esse print para debug
+            print("❌ Falha na conexão com MongoDB")
             return
 
-        print("🚀 São Vicente: Iniciando extração (QuickView JSON)...")
+        print(f"🚀 São Vicente: Iniciando extração paralela ({self.max_workers} threads)...")
         total_geral = 0
 
         for nome_cat, cgid in self.categorias.items():
             print(f"\n📦 Categoria: {nome_cat}")
 
-            start        = 0
-            total        = 1
-            total_cat    = 0
+            start     = 0
+            total     = 1
+            total_cat = 0
 
             while start < total:
                 ids, total = self.buscar_ids(cgid, start)
@@ -163,53 +195,48 @@ class SaoVicenteScraper(BaseScraper):
 
                 print(f"   📋 {len(ids)} IDs | offset {start}/{total}")
 
+                tarefas = [(pid, nome_cat) for pid in ids]
+
                 batch_p = []
                 batch_h = []
 
-                for pid in ids:
-                    data_prod = self.buscar_produto(pid)
-                    if not data_prod:
-                        continue
+                with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                    futures = {executor.submit(self.buscar_produto_com_cat, t): t for t in tarefas}
 
-                    produto = self.parsear_produto(data_prod, nome_cat)
-                    if not produto:
-                        continue
+                    for future in as_completed(futures):
+                        resultado = future.result()
+                        if not resultado:
+                            continue
 
-                    batch_p.append(UpdateOne(
-                        {"id_origem": pid, "mercado": "São Vicente"},
-                        {"$set": produto},
-                        upsert=True
-                    ))
-                    batch_h.append({
-                        "id_origem": pid,
-                        "preco":     produto["preco"],
-                        "mercado":   "São Vicente",
-                        "data":      datetime.now()
-                    })
+                        produto, historico = resultado
 
-                    time.sleep(0.25) # Delay para evitar block
+                        batch_p.append(self.criar_upsert_produto(produto))
+                        batch_h.append(historico)
 
                 if batch_p:
                     db_mongo['produtos'].bulk_write(batch_p)
-                    db_mongo['historico_precos'].insert_many(batch_h)
+                    self.salvar_historico(db_mongo, batch_h)
                     total_cat  += len(batch_p)
                     total_geral += len(batch_p)
                     print(f"   ✅ Salvos: {len(batch_p)} produtos")
 
                 start += len(ids)
-                time.sleep(1) # Delay entre páginas
+                time.sleep(1)
 
             print(f"   📊 Total {nome_cat}: {total_cat} produtos")
 
-        self.client.close() 
+        self.fechar()
         print(f"\n🏁 São Vicente: Concluído! Total geral: {total_geral} produtos")
-        
-    # Pra rodar manual ou automatico    
+
+
 if __name__ == "__main__":
     scraper = SaoVicenteScraper()
     print("\n--- 🛒 Iniciando Coleta: São Vicente ---")
+    inicio = time.time()
     try:
         scraper.executar()
+        duracao = int(time.time() - inicio)
+        print(f"⏱️ Tempo total: {timedelta(seconds=duracao)}")
         print("✅ Processo finalizado com sucesso!")
     except Exception as e:
         print(f"❌ Erro durante a execução: {e}")
