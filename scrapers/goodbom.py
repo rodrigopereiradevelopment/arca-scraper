@@ -79,8 +79,8 @@ class GoodBomScraper(BaseScraper):
 
         pagina = 1
         total_cat = 0
-        batch_p = []
-        batch_h = []
+        batch_p = []  # ← REMOVI batch_h
+        # batch_h = []  ← REMOVER esta linha
 
         while True:
             texto = self.buscar_pagina(slug, pagina)
@@ -106,7 +106,6 @@ class GoodBomScraper(BaseScraper):
                     except Exception:
                         nome_limpo = nome_raw
 
-                    # ─── USA A NOVA BASE SCRAPER ───
                     produto = BaseScraper.criar_produto(
                         id_origem=pid,
                         nome=nome_limpo,
@@ -120,7 +119,7 @@ class GoodBomScraper(BaseScraper):
                     )
 
                     batch_p.append(self.criar_upsert_produto(produto))
-                    batch_h.append(self.criar_historico(pid, preco_final, self.mercado))
+                    # batch_h.append(self.criar_historico(pid, preco_final, self.mercado))  ← REMOVER
 
                 except Exception:
                     continue
@@ -135,7 +134,7 @@ class GoodBomScraper(BaseScraper):
             time.sleep(self.delay_pagina)
 
         print(f"   🏁 {cat_nome}: {total_cat} produtos coletados")
-        return cat_nome, batch_p, batch_h, total_cat
+        return cat_nome, batch_p, total_cat  # ← REMOVI batch_h do retorno
 
     # ────────────────────────────────────────
     # EXECUÇÃO PRINCIPAL
@@ -153,11 +152,11 @@ class GoodBomScraper(BaseScraper):
 
             for future in as_completed(futures):
                 try:
-                    cat_nome, batch_p, batch_h, total_cat = future.result()
+                    cat_nome, batch_p, total_cat = future.result()  # ← REMOVI batch_h
 
                     if batch_p:
                         db['produtos'].bulk_write(batch_p)
-                        self.salvar_historico(db, batch_h)
+                        # self.salvar_historico(db, batch_h)  ← REMOVER
                         total_geral += total_cat
                         print(f"   💾 {cat_nome}: {total_cat} produtos salvos no MongoDB")
 

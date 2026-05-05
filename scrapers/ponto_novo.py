@@ -45,9 +45,6 @@ class PontoNovoScraper(BaseScraper):
             "version": "v2.6.0"
         }
 
-    # ────────────────────────────────────────
-    # MÉTODOS AUXILIARES
-    # ────────────────────────────────────────
     def get(self, url):
         """Requisição GET com headers padrão"""
         try:
@@ -59,9 +56,6 @@ class PontoNovoScraper(BaseScraper):
             print(f"   ❌ Erro de conexão: {e}")
         return None
 
-    # ────────────────────────────────────────
-    # EXECUÇÃO PRINCIPAL
-    # ────────────────────────────────────────
     def executar(self):
         db = self.conectar()
         if db is None:
@@ -115,7 +109,6 @@ class PontoNovoScraper(BaseScraper):
                         break
 
                     batch_p = []
-                    batch_h = []
 
                     for p in produtos_raw:
                         id_origem = str(p.get("sku", ""))
@@ -136,7 +129,6 @@ class PontoNovoScraper(BaseScraper):
                             img_hash = p.get("imghash", "")
                             url_img = f"https://s3.mobilesim.com.br/images/products/{img_hash}.jpg" if img_hash else ""
 
-                            # ─── USA A NOVA BASE SCRAPER (TUDO AUTOMÁTICO) ───
                             produto = BaseScraper.criar_produto(
                                 id_origem=id_origem,
                                 ean=str(p.get("barcode", "N/A")),
@@ -152,8 +144,6 @@ class PontoNovoScraper(BaseScraper):
                             )
 
                             batch_p.append(self.criar_upsert_produto(produto))
-                            batch_h.append(self.criar_historico(id_origem, preco_final, self.mercado))
-
                             skus_da_categoria.add(id_origem)
                             itens_novos_nesta_sub += 1
 
@@ -162,7 +152,6 @@ class PontoNovoScraper(BaseScraper):
 
                     if batch_p:
                         db['produtos'].bulk_write(batch_p)
-                        self.salvar_historico(db, batch_h)
                         total_categoria += len(batch_p)
 
                     if len(produtos_raw) < 30:

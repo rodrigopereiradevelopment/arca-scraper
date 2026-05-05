@@ -17,7 +17,7 @@ import requests
 import time
 import ftfy
 import urllib3
-from datetime import datetime
+from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from scrapers.base_scraper import BaseScraper
 
@@ -43,8 +43,8 @@ class AtacadaoScraper(BaseScraper):
         self.region_id = "v2.C65CCB3E6E9AAC0F04F39F5DF14AB96F"
         self.channel = '{"salesChannel":"1","seller":"atacadaobr945","regionId":"' + self.region_id + '"}'
         
-        self.max_workers = 3   # subcategorias em paralelo
-        self.delay_pagina = 0.3  # delay entre páginas
+        self.max_workers = 3
+        self.delay_pagina = 0.3
 
     # ────────────────────────────────────────
     # MÉTODOS AUXILIARES
@@ -187,8 +187,8 @@ class AtacadaoScraper(BaseScraper):
             if not edges:
                 break
 
-            ops_produtos = []
-            ops_historico = []
+            ops_produtos = []  # ← REMOVI ops_historico
+            # ops_historico = []  ← REMOVER esta linha
 
             for edge in edges:
                 p = edge["node"]
@@ -213,7 +213,6 @@ class AtacadaoScraper(BaseScraper):
                 else:
                     url_imagem = "N/A"
 
-                # ─── USA A NOVA BASE SCRAPER ───
                 produto = BaseScraper.criar_produto(
                     id_origem=p.get("id"),
                     ean=ean,
@@ -230,11 +229,11 @@ class AtacadaoScraper(BaseScraper):
                 )
 
                 ops_produtos.append(self.criar_upsert_produto(produto))
-                ops_historico.append(self.criar_historico(p.get("id"), preco, self.mercado))
+                # ops_historico.append(self.criar_historico(p.get("id"), preco, self.mercado))  ← REMOVER
 
             if ops_produtos:
                 db['produtos'].bulk_write(ops_produtos)
-                self.salvar_historico(db, ops_historico)
+                # self.salvar_historico(db, ops_historico)  ← REMOVER
                 total_sub += len(ops_produtos)
 
             after += len(edges)
@@ -284,7 +283,6 @@ if __name__ == "__main__":
     try:
         scraper.executar()
         duracao = int(time.time() - inicio)
-        from datetime import timedelta
         print(f"⏱️ Tempo total: {timedelta(seconds=duracao)}")
         print("✅ Processo finalizado com sucesso!")
     except Exception as e:

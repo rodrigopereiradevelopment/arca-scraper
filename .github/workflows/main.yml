@@ -1,16 +1,14 @@
 name: CI Arca Scraper
 
 on:
-  push:
-    branches: [ main ]
   schedule:
     - cron: '0 3 * * 1'  # Toda segunda-feira às 00:00 BRT
-  workflow_dispatch:
+  workflow_dispatch:       # Manual (botão "Run workflow")
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # 6 horas (limite máximo)
+    timeout-minutes: 360
 
     steps:
     - name: Checkout do Código
@@ -30,7 +28,7 @@ jobs:
       env:
         MONGO_URI: ${{ secrets.MONGO_URI }}
         IMPERIAL_TOKEN: ${{ secrets.IMPERIAL_TOKEN }}
-        API_AUTHORIZATION_TOKEN: ${{ secrets.PONTO_NOVO_TOKEN }}
+        API_AUTHORIZATION_TOKEN: ${{ secrets.API_AUTHORIZATION_TOKEN }}
       run: |
         python main.py
 
