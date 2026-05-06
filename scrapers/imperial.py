@@ -118,8 +118,7 @@ class ImperialScraper(BaseScraper):
                     if not produtos_raw:
                         break
 
-                    batch_p = []
-                    batch_h = []
+                    batch_p = []  # ← REMOVI batch_h
 
                     for p in produtos_raw:
                         id_origem = str(p.get("sku", ""))
@@ -141,7 +140,6 @@ class ImperialScraper(BaseScraper):
                             img_hash = p.get("imghash", "")
                             url_img  = f"https://s3.mobilesim.com.br/images/products/{img_hash}.jpg" if img_hash else ""
 
-                            # ─── USA A NOVA BASE SCRAPER ───
                             produto = BaseScraper.criar_produto(
                                 id_origem=id_origem,
                                 ean=str(p.get("barcode", "N/A")),
@@ -157,7 +155,7 @@ class ImperialScraper(BaseScraper):
                             )
 
                             batch_p.append(self.criar_upsert_produto(produto))
-                            batch_h.append(self.criar_historico(id_origem, preco_final, self.mercado))
+                            # ← REMOVI batch_h.append
 
                             skus_da_categoria.add(id_origem)
                             itens_novos_nesta_sub += 1
@@ -167,7 +165,7 @@ class ImperialScraper(BaseScraper):
 
                     if batch_p:
                         db['produtos'].bulk_write(batch_p)
-                        self.salvar_historico(db, batch_h)
+                        # ← REMOVI self.salvar_historico
                         total_categoria += len(batch_p)
 
                     if len(produtos_raw) < 30:

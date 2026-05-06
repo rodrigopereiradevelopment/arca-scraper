@@ -9,7 +9,8 @@ from scrapers.atacadao import AtacadaoScraper
 from scrapers.ponto_novo import PontoNovoScraper
 from scrapers.sao_vicente import SaoVicenteScraper
 
-from limpeza_silver import processar_e_salvar_mongodb
+# ← REMOVIDO import da limpeza_silver
+# from limpeza_silver import processar_e_salvar_mongodb
 
 
 def executar_pipeline_arca():
@@ -17,10 +18,11 @@ def executar_pipeline_arca():
     data_hora_inicio = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
     
     print(f"--- 🚀 INICIANDO PIPELINE ARCA: {data_hora_inicio} ---")
+    print("📌 Modo: Histórico embutido (sem camada Silver)")
 
     # ─── ATACADÃO PRIMEIRO (mais sensível) ───
     mercados = [
-        {"nome": "Atacadão",    "instancia": AtacadaoScraper()},   # ← PRIMEIRO!
+        {"nome": "Atacadão",    "instancia": AtacadaoScraper()},
         {"nome": "São Vicente", "instancia": SaoVicenteScraper()},
         {"nome": "Pague Menos", "instancia": PagueMenosScraper()},
         {"nome": "Ponto Novo",  "instancia": PontoNovoScraper()},
@@ -76,13 +78,9 @@ def executar_pipeline_arca():
         print("✅ Todos os scrapers concluídos com sucesso!")
     print("=" * 40)
 
-    # ─── ETAPA 2: LIMPEZA SILVER ───
-    print("\n--- 🧹 INICIANDO LIMPEZA E PADRONIZAÇÃO (CAMADA SILVER) ---")
-    try:
-        processar_e_salvar_mongodb()
-        print("🎉 Camada Silver atualizada com sucesso pelo pipeline!")
-    except Exception as e:
-        print(f"❌ Erro ao executar a limpeza Silver: {e}")
+    # ─── ETAPA 2: REMOVIDA (Silver não existe mais) ───
+    print("\n✅ Pipeline concluído - Histórico embutido nos produtos")
+    print("   (Sem etapa de limpeza Silver - economia de espaço e tempo)")
 
     # ─── RESUMO FINAL ───
     print("\n" + "=" * 40)

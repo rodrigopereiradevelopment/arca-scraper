@@ -104,8 +104,8 @@ class PagueMenosScraper(BaseScraper):
             print(f"\n📦 {cat} (~{qtd} produtos)")
             cat_total = 0
             ultima_sig = None
-            bulk_produtos = []
-            bulk_historico = []
+            bulk_produtos = []  # ← REMOVI bulk_historico
+            # bulk_historico = []  ← REMOVER
 
             for p in range(1, paginas_estimadas + 1):
                 url = f"{BASE}/{cat}/?p={p}"
@@ -128,7 +128,6 @@ class PagueMenosScraper(BaseScraper):
                     produtos_raw = extrair_produtos_pagina(soup, cat)
 
                     for item in produtos_raw:
-                        # ─── USA A NOVA BASE SCRAPER ───
                         produto = BaseScraper.criar_produto(
                             id_origem=item["id_origem"],
                             ean=item["ean"],
@@ -146,18 +145,16 @@ class PagueMenosScraper(BaseScraper):
                         )
 
                         bulk_produtos.append(self.criar_upsert_produto(produto))
-                        bulk_historico.append(
-                            self.criar_historico(item["id_origem"], item["preco"], self.mercado)
-                        )
+                        # ← REMOVI bulk_historico.append
 
                     cat_total += len(produtos_raw)
 
                     if len(bulk_produtos) >= 50:
                         db['produtos'].bulk_write(bulk_produtos)
-                        self.salvar_historico(db, bulk_historico)
+                        # ← REMOVI self.salvar_historico
                         print(f"   💾 {cat_total} produtos salvos...")
                         bulk_produtos = []
-                        bulk_historico = []
+                        # bulk_historico = []  ← REMOVER
 
                     print(f"   pág {p}: {len(produtos_raw)} produtos")
                     time.sleep(0.6)
@@ -168,7 +165,7 @@ class PagueMenosScraper(BaseScraper):
 
             if bulk_produtos:
                 db['produtos'].bulk_write(bulk_produtos)
-                self.salvar_historico(db, bulk_historico)
+                # ← REMOVI self.salvar_historico
 
             total_geral += cat_total
             print(f"   ✅ {cat_total} produtos em {cat}")

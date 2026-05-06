@@ -119,7 +119,6 @@ class SaoVicenteScraper(BaseScraper):
         """
         Extrai dados do JSON da QuickView e retorna:
         - produto (dict padronizado via BaseScraper)
-        - historico (dict)
         ou None se falhar
         """
         try:
@@ -148,9 +147,7 @@ class SaoVicenteScraper(BaseScraper):
                 url_imagem=url_img,
             )
 
-            historico = self.criar_historico(pid, float(preco), self.mercado)
-
-            return produto, historico
+            return produto
 
         except Exception:
             return None
@@ -158,7 +155,7 @@ class SaoVicenteScraper(BaseScraper):
     def buscar_produto_com_cat(self, args):
         """
         Wrapper para ThreadPoolExecutor.
-        Recebe (pid, nome_cat), retorna (produto, historico) ou None.
+        Recebe (pid, nome_cat), retorna produto ou None.
         """
         pid, nome_cat = args
         time.sleep(self.delay)
@@ -197,25 +194,23 @@ class SaoVicenteScraper(BaseScraper):
 
                 tarefas = [(pid, nome_cat) for pid in ids]
 
-                batch_p = []
-                batch_h = []
+                batch_p = []  # ← REMOVI batch_h
+                # batch_h = []  ← REMOVER
 
                 with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                     futures = {executor.submit(self.buscar_produto_com_cat, t): t for t in tarefas}
 
                     for future in as_completed(futures):
-                        resultado = future.result()
-                        if not resultado:
+                        produto = future.result()
+                        if not produto:
                             continue
 
-                        produto, historico = resultado
-
                         batch_p.append(self.criar_upsert_produto(produto))
-                        batch_h.append(historico)
+                        # ← REMOVI batch_h.append(historico)
 
                 if batch_p:
                     db_mongo['produtos'].bulk_write(batch_p)
-                    self.salvar_historico(db_mongo, batch_h)
+                    # ← REMOVI self.salvar_historico(db_mongo, batch_h)
                     total_cat  += len(batch_p)
                     total_geral += len(batch_p)
                     print(f"   ✅ Salvos: {len(batch_p)} produtos")
