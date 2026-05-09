@@ -1,6 +1,7 @@
 import time
-from datetime import timedelta
-from datetime import datetime
+from datetime import timedelta, datetime
+import requests  # 👈 ADICIONAR
+import os  # 👈 ADICIONAR
 
 from scrapers.goodbom import GoodBomScraper
 from scrapers.paguemenos import PagueMenosScraper
@@ -9,8 +10,32 @@ from scrapers.atacadao import AtacadaoScraper
 from scrapers.ponto_novo import PontoNovoScraper
 from scrapers.sao_vicente import SaoVicenteScraper
 
-# ← REMOVIDO import da limpeza_silver
-# from limpeza_silver import processar_e_salvar_mongodb
+
+def sync_com_supabase():
+    """Chama o endpoint de sync do Next.js para atualizar preços no Supabase"""
+    try:
+        api_url = os.getenv("NEXT_PUBLIC_APP_URL", "http://localhost:3000")
+        sync_secret = os.getenv("SYNC_SECRET")
+        
+        if not sync_secret:
+            print("⚠️ SYNC_SECRET não configurado. Pulando sync com Supabase.")
+            return
+        
+        print("\n🔄 Sincronizando preços com Supabase...")
+        response = requests.post(
+            f"{api_url}/api/migrate",
+            json={"action": "sync", "secret": sync_secret},
+            timeout=7200  # 2 horas, para garantir que o sync completo seja realizado sem timeout
+        )
+        
+        if response.status_code == 200:
+            dados = response.json()
+            print(f"✅ Sync concluído: {dados.get('sincronizados', 0)} preços atualizados")
+        else:
+            print(f"⚠️ Sync falhou: {response.status_code} - {response.text}")
+            
+    except Exception as e:
+        print(f"❌ Erro ao chamar sync: {e}")
 
 
 def executar_pipeline_arca():
@@ -18,7 +43,7 @@ def executar_pipeline_arca():
     data_hora_inicio = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
     
     print(f"--- 🚀 INICIANDO PIPELINE ARCA: {data_hora_inicio} ---")
-    print("📌 Modo: Histórico embutido (sem camada Silver)")
+    print("📌 Modo: Histórico embutido + Sync Supabase")
 
     # ─── ATACADÃO PRIMEIRO (mais sensível) ───
     mercados = [
@@ -52,7 +77,6 @@ def executar_pipeline_arca():
             erros.append(nome)
             tempos.append((nome, 0))
             
-            # Se o Atacadão falhar, CONTINUA pros outros
             if nome == "Atacadão":
                 print("⚠️ Atacadão falhou, mas continuando com os demais scrapers...")
                 continue
@@ -78,9 +102,12 @@ def executar_pipeline_arca():
         print("✅ Todos os scrapers concluídos com sucesso!")
     print("=" * 40)
 
-    # ─── ETAPA 2: REMOVIDA (Silver não existe mais) ───
+    # ─── PIPELINE CONCLUÍDO - SEM SILVER ───
     print("\n✅ Pipeline concluído - Histórico embutido nos produtos")
     print("   (Sem etapa de limpeza Silver - economia de espaço e tempo)")
+
+    # ─── NOVO: Sincronizar com Supabase ───
+    sync_com_supabase()
 
     # ─── RESUMO FINAL ───
     print("\n" + "=" * 40)
