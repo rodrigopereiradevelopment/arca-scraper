@@ -39,6 +39,7 @@ jobs:
         python main.py --mercado ${{ matrix.mercado }}
 
   # JOB 2: Roda o Sync com o Supabase APENAS depois que todos os scrapers terminarem
+    # JOB 2: Roda o Sync com o Supabase APENAS depois que todos os scrapers terminarem
   sync_supabase:
     runs-on: ubuntu-latest
     needs: scraping # Espera o job de scraping acabar
@@ -53,9 +54,10 @@ jobs:
       with:
         python-version: '3.12'
 
-    - name: Instalar dependências
+    - name: Instalar TODAS as dependências
       run: |
-        pip install requests python-dotenv
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
 
     - name: Disparar Sincronização
       env:
