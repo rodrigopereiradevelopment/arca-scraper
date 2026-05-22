@@ -1,7 +1,8 @@
 import time
 from datetime import timedelta, datetime
-import requests  # 👈 ADICIONAR
-import os  # 👈 ADICIONAR
+import requests
+import os
+import argparse  # 👈 Adicionado para gerenciar os argumentos da matriz do GitHub
 
 from scrapers.goodbom import GoodBomScraper
 from scrapers.paguemenos import PagueMenosScraper
@@ -39,13 +40,13 @@ def sync_com_supabase():
 
 
 def executar_pipeline_arca():
+    """Roda todos os scrapers sequencialmente (Mantido para rodar na Oracle/Local)"""
     inicio_geral = time.time()
     data_hora_inicio = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
     
-    print(f"--- 🚀 INICIANDO PIPELINE ARCA: {data_hora_inicio} ---")
+    print(f"--- 🚀 INICIANDO PIPELINE ARCA COMPLETO: {data_hora_inicio} ---")
     print("📌 Modo: Histórico embutido + Sync Supabase")
 
-    # ─── ATACADÃO PRIMEIRO (mais sensível) ───
     mercados = [
         {"nome": "Atacadão",    "instancia": AtacadaoScraper()},
         {"nome": "São Vicente", "instancia": SaoVicenteScraper()},
@@ -102,14 +103,12 @@ def executar_pipeline_arca():
         print("✅ Todos os scrapers concluídos com sucesso!")
     print("=" * 40)
 
-    # ─── PIPELINE CONCLUÍDO - SEM SILVER ───
     print("\n✅ Pipeline concluído - Histórico embutido nos produtos")
     print("   (Sem etapa de limpeza Silver - economia de espaço e tempo)")
 
-    # ─── NOVO: Sincronizar com Supabase ───
+    # Sincronizar com Supabase
     sync_com_supabase()
 
-    # ─── RESUMO FINAL ───
     print("\n" + "=" * 40)
     print("🏁 PIPELINE ARCA CONCLUÍDO")
     print(f"   Início: {data_hora_inicio}")
@@ -119,4 +118,42 @@ def executar_pipeline_arca():
 
 
 if __name__ == "__main__":
-    executar_pipeline_arca()
+    # Configura o leitor de argumentos da linha de comando
+    parser = argparse.ArgumentParser(description="Pipeline de Scraping do Projeto ARCA")
+    parser.add_argument(
+        "--mercado", 
+        type=str, 
+        help="Roda um mercado específico de forma isolada (usado pelo GitHub Actions)"
+    )
+    args = parser.parse_args()
+
+    # Mapeamento para execução individual via Matrix do GitHub
+    mapeamento_mercados = {
+        "atacadao": {"nome": "Atacadão", "instancia": AtacadaoScraper()},
+        "sao_vicente": {"nome": "São Vicente", "instancia": SaoVicenteScraper()},
+        "pague_menos": {"nome": "Pague Menos", "instancia": PagueMenosScraper()},
+        "ponto_novo": {"nome": "Ponto Novo", "instancia": PontoNovoScraper()},
+        "imperial": {"nome": "Imperial", "instancia": ImperialScraper()},
+        "goodbom": {"nome": "GoodBom", "instancia": GoodBomScraper()},
+    }
+
+    # SE passarmos o argumento '--mercado', roda apenas o mercado escolhido (Fluxo do GitHub)
+    if args.mercado:
+        mercado_alvo = args.mercado.lower().strip()
+        if mercado_alvo in mapeamento_mercados:
+            item = mapeamento_mercados[mercado_alvo]
+            print(f"--- 🚀 INICIANDO SCRAPER INDIVIDUAL: {item['nome']} ---")
+            inicio = time.time()
+            try:
+                item["instancia"].executar()
+                print(f"✅ {item['nome']} finalizado com sucesso em {timedelta(seconds=int(time.time() - inicio))}")
+            except Exception as e:
+                print(f"❌ ERRO CRÍTICO EM {item['nome']}: {e}")
+                exit(1)  # Força o erro para o GitHub Actions capturar que esse mercado falhou
+        else:
+            print(f"❌ Mercado '{args.mercado}' inválido. Escolha entre: {list(mapeamento_mercados.keys())}")
+            exit(1)
+            
+    # SE NÃO passarmos argumento nenhum, roda o fluxo completo antigo (Fluxo local ou da futura Oracle)
+    else:
+        executar_pipeline_arca()

@@ -2,13 +2,18 @@ name: CI Arca Scraper
 
 on:
   schedule:
-    - cron: '0 3 * * 1'  # Toda segunda-feira às 00:00 BRT
-  workflow_dispatch:       # Manual (botão "Run workflow")
+    - cron: '0 3 * * 1,4'  # Toda segunda-feira às 00:00 BRT
+  workflow_dispatch:     # Manual (botão "Run workflow")
 
 jobs:
-  build:
+  # JOB 1: Roda as raspagens todas em paralelo
+  scraping:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false # Se um mercado falhar, não mata a execução dos outros
+      matrix:
+        mercado: [atacadao, sao_vicente, pague_menos, ponto_novo, imperial, goodbom]
 
     steps:
     - name: Checkout do Código
@@ -24,13 +29,38 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Executar Pipeline ARCA
+    - name: Executar Scraper da Matriz
       env:
         MONGO_URI: ${{ secrets.MONGO_URI }}
         IMPERIAL_TOKEN: ${{ secrets.IMPERIAL_TOKEN }}
         API_AUTHORIZATION_TOKEN: ${{ secrets.API_AUTHORIZATION_TOKEN }}
       run: |
-        python main.py
+        # Passa o mercado atual da lista da matriz para o script Python
+        python main.py --mercado ${{ matrix.mercado }}
 
-    - name: Pipeline Concluído
-      run: echo "✅ Coleta e análise concluídas com sucesso!"
+  # JOB 2: Roda o Sync com o Supabase APENAS depois que todos os scrapers terminarem
+  sync_supabase:
+    runs-on: ubuntu-latest
+    needs: scraping # Espera o job de scraping acabar
+    if: always()    # Roda mesmo se algum mercado individual tiver falhado
+
+    steps:
+    - name: Checkout do Código
+      uses: actions/checkout@v4
+
+    - name: Configurar Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Instalar dependências
+      run: |
+        pip install requests python-dotenv
+
+    - name: Disparar Sincronização
+      env:
+        NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+        SYNC_SECRET: ${{ secrets.SYNC_SECRET }}
+      run: |
+        # Executa uma chamada inline para rodar só a função de sync do Supabase
+        python -c "from main import sync_com_supabase; sync_com_supabase()"
