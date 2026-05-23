@@ -2,67 +2,69 @@ name: CI Arca Scraper
 
 on:
   schedule:
-    - cron: '0 3 * * 1,4'  # Toda segunda-feira às 00:00 BRT
-  workflow_dispatch:     # Manual (botão "Run workflow")
+    - cron: '0 3 * * 1,4'  # Segunda e Quinta 00:00 BRT
+  workflow_dispatch:
 
 jobs:
-  # JOB 1: Roda as raspagens todas em paralelo
+  # JOB 1: Scraping paralelo (6 mercados)
   scraping:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
-      fail-fast: false # Se um mercado falhar, não mata a execução dos outros
+      fail-fast: false
       matrix:
         mercado: [atacadao, sao_vicente, pague_menos, ponto_novo, imperial, goodbom]
 
     steps:
-    - name: Checkout do Código
+    - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Configurar Python
+    - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
 
-    - name: Instalar dependências
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Executar Scraper da Matriz
+    - name: Run Scraper
       env:
         MONGO_URI: ${{ secrets.MONGO_URI }}
         IMPERIAL_TOKEN: ${{ secrets.IMPERIAL_TOKEN }}
         API_AUTHORIZATION_TOKEN: ${{ secrets.API_AUTHORIZATION_TOKEN }}
       run: |
-        # Passa o mercado atual da lista da matriz para o script Python
         python main.py --mercado ${{ matrix.mercado }}
 
-  # JOB 2: Roda o Sync com o Supabase APENAS depois que todos os scrapers terminarem
-    # JOB 2: Roda o Sync com o Supabase APENAS depois que todos os scrapers terminarem
+  # JOB 2: Sync paralelo (cada mercado sync separado!)
   sync_supabase:
     runs-on: ubuntu-latest
-    needs: scraping # Espera o job de scraping acabar
-    if: always()    # Roda mesmo se algum mercado individual tiver falhado
+    needs: scraping
+    if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        mercado: [atacadao, sao_vicente, pague_menos, ponto_novo, imperial, goodbom]
 
     steps:
-    - name: Checkout do Código
+    - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Configurar Python
+    - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
 
-    - name: Instalar TODAS as dependências
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Disparar Sincronização
+    - name: Sync Mercado
       env:
-        NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
-        SYNC_SECRET: ${{ secrets.SYNC_SECRET }}
+        MONGO_URI: ${{ secrets.MONGO_URI }}
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       run: |
-        # Executa uma chamada inline para rodar só a função de sync do Supabase
-        python -c "from main import sync_com_supabase; sync_com_supabase()"
+        python scripts/sync_mercado.py --mercado ${{ matrix.mercado }}
