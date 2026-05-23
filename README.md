@@ -126,15 +126,22 @@ text
 ```bash
 git clone https://github.com/rodrigopereiradevelopment/arca-scraper.git
 cd arca-scraper
-2. Criar ambiente virtual
-bash
+
+```
+
+### 2. Criar ambiente virtual
+
+```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-3. Configurar .env
+
+```
+
+### 3. Configurar .env
 Crie um arquivo .env na raiz do projeto:
 
-env
+```env
 # MongoDB
 MONGO_URI=mongodb+srv://<USUARIO>:<SENHA>@arca-cluster.xo5yomu.mongodb.net/
 
@@ -145,8 +152,12 @@ API_AUTHORIZATION_TOKEN=seu_token_aqui
 # Supabase (opcional, para sync)
 SUPABASE_URL=https://seuprojeto.supabase.co
 SUPABASE_SERVICE_KEY=sua_service_key_aqui
-4. Executar
-bash
+
+```
+
+### 4. Executar
+
+```bash
 # Todos os mercados (sequencial - local)
 python main.py
 
@@ -155,8 +166,12 @@ python main.py --mercado atacadao
 
 # Sync com Supabase
 python scripts/migrate_to_supabase.py --sync
-📊 Estrutura do Projeto
-text
+
+```
+
+### 📊 Estrutura do Projeto
+
+```text
 arca-scraper/
 ├── scrapers/
 │   ├── base_scraper.py      # Classe mãe (histórico embutido, normalização)
@@ -173,10 +188,13 @@ arca-scraper/
 ├── requirements.txt
 └── .github/workflows/
     └── main.yml             # CI/CD (matrix strategy, seg/qui 00:00 BRT)
-🔄 Pipeline Automatizado (GitHub Actions)
+
+```
+
+### 🔄 Pipeline Automatizado (GitHub Actions)
 O GitHub Actions executa com matrix strategy:
 
-yaml
+```yaml
 jobs:
   scraping:           # 6 máquinas paralelas (56 min)
     strategy:
@@ -188,18 +206,22 @@ jobs:
     strategy:
       matrix:
         mercado: [atacadao, sao_vicente, pague_menos, ponto_novo, imperial, goodbom]
-Schedule: Segunda e Quinta às 00:00 BRT
 
-Manual: Botão "Run workflow" no GitHub
+```
 
-Tempo total: ~71 minutos
+## Schedule: Segunda e Quinta às 00:00 BRT
 
-📈 Evolução do Projeto
+## Manual: Botão "Run workflow" no GitHub
+
+## Tempo total: ~71 minutos
+
+### 📈 Evolução do Projeto
 Versão	Característica	Tempo	Espaço
 v1.0	Sequencial + Silver	~5h45	~250 MB
 v2.0	Paralelismo interno	~3h20	~250 MB
 v3.0	Matrix strategy + Histórico embutido	~71 min	18 MB
-⚠️ Aviso Ético e Legal
+
+### ⚠️ Aviso Ético e Legal
 Este projeto foi desenvolvido para fins educacionais como Trabalho de Conclusão de Curso (TCC) na ETEC Pedro Ferreira Alves.
 
 ✅ Respeita intervalos de requisição (time.sleep)
@@ -210,20 +232,20 @@ Este projeto foi desenvolvido para fins educacionais como Trabalho de Conclusão
 
 ✅ Sem intenção de sobrecarregar servidores
 
-📄 Licença
+###📄 Licença
 Este projeto está sob a licença MIT — veja o arquivo LICENSE para detalhes.
 
-👤 Autor
-Rodrigo Pereira
-GitHub: @rodrigopereiradevelopment
-Contato: rodrigopereira.development@gmail.com
-Projeto relacionado: arca-ionic (App Mobile)
+### 👤 Autor
+# Rodrigo Pereira
+# GitHub: @rodrigopereiradevelopment
+# Contato: rodrigopereira.development@gmail.com
+# Projeto relacionado: arca-ionic (App Mobile)
 
-🙏 Agradecimentos
-ETEC Pedro Ferreira Alves (TCC)
+### 🙏 Agradecimentos
+# ETEC Pedro Ferreira Alves (TCC)
 
-Orientador Prof. Maurício Aparecido das Neves
+# Orientador Prof. Maurício Aparecido das Neves
 
-Colegas de turma: Bruno, Miguel, Félix
+# Colegas de turma: Bruno, Miguel, Félix
 
-Comunidade open-source pelo suporte!
+# Comunidade open-source pelo suporte!
