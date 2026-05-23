@@ -209,43 +209,43 @@ jobs:
 
 ```
 
-- **Schedule: Segunda e Quinta às 00:00 BRT
+- **Schedule:** Segunda e Quinta às 00:00 BRT
 
-- **Manual: Botão "Run workflow" no GitHub
+- **Manual:** Botão "Run workflow" no GitHub
 
-- **Tempo total: ~71 minutos
+- **Tempo total:** ~71 minutos
 
 ### 📈 Evolução do Projeto
 Versão	Característica	Tempo	Espaço
 v1.0	Sequencial + Silver	~5h45	~250 MB
 v2.0	Paralelismo interno	~3h20	~250 MB
-v3.0	Matrix strategy + Histórico embutido	~71 min	18 MB
+v3.0	**Matrix strategy + Histórico embutido	~71 min	18 MB**
 
 ### ⚠️ Aviso Ético e Legal
 Este projeto foi desenvolvido para fins educacionais como Trabalho de Conclusão de Curso (TCC) na ETEC Pedro Ferreira Alves.
 
-✅ Respeita intervalos de requisição (time.sleep)
+- ✅ Respeita intervalos de requisição (time.sleep)
 
-✅ User-Agent identificado como bot acadêmico
+- ✅ User-Agent identificado como bot acadêmico
 
-✅ Dados coletados são de domínio público
+- ✅ Dados coletados são de domínio público
 
-✅ Sem intenção de sobrecarregar servidores
+- ✅ Sem intenção de sobrecarregar servidores
 
 ### 📄 Licença
 Este projeto está sob a licença MIT — veja o arquivo LICENSE para detalhes.
 
 ### 👤 Autor
-# Rodrigo Pereira
-# GitHub: @rodrigopereiradevelopment
-# Contato: rodrigopereira.development@gmail.com
-# Projeto relacionado: arca-ionic (App Mobile)
+**Rodrigo Pereira**
+GitHub: @rodrigopereiradevelopment
+Contato: rodrigopereira.development@gmail.com
+Projeto relacionado: arca-ionic (App Mobile)
 
 ### 🙏 Agradecimentos
-# ETEC Pedro Ferreira Alves (TCC)
+- ETEC Pedro Ferreira Alves (TCC)
 
-# Orientador Prof. Maurício Aparecido das Neves
+- Orientador Prof. Maurício Aparecido das Neves
 
-# Colegas de turma: Bruno, Miguel, Félix
+- Colegas de turma: Bruno, Miguel, Félix
 
-# Comunidade open-source pelo suporte!
+- Comunidade open-source pelo suporte!
