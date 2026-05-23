@@ -22,4 +22,4 @@ playwright==1.49.0
 playwright-stealth
 
 # --- Helpers ---
-typing_extensions==4.15.0
+typing_extensions==4.15.0supabase>=2.0.0
