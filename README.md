@@ -209,11 +209,11 @@ jobs:
 
 ```
 
-## Schedule: Segunda e Quinta às 00:00 BRT
+- **Schedule: Segunda e Quinta às 00:00 BRT
 
-## Manual: Botão "Run workflow" no GitHub
+- **Manual: Botão "Run workflow" no GitHub
 
-## Tempo total: ~71 minutos
+- **Tempo total: ~71 minutos
 
 ### 📈 Evolução do Projeto
 Versão	Característica	Tempo	Espaço
@@ -232,7 +232,7 @@ Este projeto foi desenvolvido para fins educacionais como Trabalho de Conclusão
 
 ✅ Sem intenção de sobrecarregar servidores
 
-###📄 Licença
+### 📄 Licença
 Este projeto está sob a licença MIT — veja o arquivo LICENSE para detalhes.
 
 ### 👤 Autor
