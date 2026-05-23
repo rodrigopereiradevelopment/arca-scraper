@@ -34,11 +34,11 @@ class AtacadaoScraper(BaseScraper):
 
         self.headers = {
             "Content-Type": "application/json",
-            "User-Agent": (
-                "ARCA-Bot/1.0 (Bot Academico TCC ETEC; "
-                "Contato: rodrigopereira.development@gmail.com; "
-                "GitHub: https://github.com/rodrigopereiradevelopment/arca-ionic)"
-            )
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "X-Bot-Info": "ARCA-Bot/1.0 TCC ETEC Pedro Ferreira Alves - rodrigopereira.development@gmail.com",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "pt-BR,pt;q=0.9",
+            "Referer": "https://www.atacadao.com.br/",
         }
         self.region_id = "v2.C65CCB3E6E9AAC0F04F39F5DF14AB96F"
         self.channel = '{"salesChannel":"1","seller":"atacadaobr945","regionId":"' + self.region_id + '"}'
@@ -52,53 +52,71 @@ class AtacadaoScraper(BaseScraper):
     def obter_categorias_dinamicas(self):
         """Mapeia a árvore de categorias do Atacadão via API REST"""
         print("🔍 Mapeando árvore do Atacadão...")
-        try:
-            time.sleep(2)
-            res = requests.get(
-                self.url_tree,
-                headers=self.headers,
-                timeout=20,
-                verify=False,
-                allow_redirects=True
-            )
-            if res.status_code != 200:
-                print(f"   ⚠️ Status {res.status_code} na árvore de categorias")
-                return []
+        
+        headers_realistas = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "pt-BR,pt;q=0.9",
+            "Referer": "https://www.atacadao.com.br/",
+        }
+        
+        esperas = [5, 20, 45]
+        for tentativa, espera in enumerate(esperas, 1):
+            try:
+                print(f"   ⏳ Tentativa {tentativa}/3 (aguardando {espera}s)...")
+                time.sleep(espera)
+                res = requests.get(
+                    self.url_tree,
+                    headers=headers_realistas,
+                    timeout=30,
+                    verify=False,
+                    allow_redirects=True
+                )
+                if res.status_code == 429:
+                    print(f"   ⚠️ Status 429 — aguardando antes de tentar novamente...")
+                    continue
+                if res.status_code != 200:
+                    print(f"   ⚠️ Status {res.status_code} na árvore de categorias")
+                    continue
 
-            tree = res.json()
-            lista_final = []
-            seen = set()
+                tree = res.json()
+                lista_final = []
+                seen = set()
 
-            for cat_pai in tree:
-                c1_nome = cat_pai['name'].upper()
-                c1_slug = cat_pai['url'].rstrip('/').split('/')[-1]
-
-                if cat_pai.get('children'):
-                    for sub in cat_pai['children']:
-                        c2_slug = sub['url'].rstrip('/').split('/')[-1]
-                        chave = (c1_slug, c2_slug)
+                for cat_pai in tree:
+                    c1_nome = cat_pai['name'].upper()
+                    c1_slug = cat_pai['url'].rstrip('/').split('/')[-1]
+                    if cat_pai.get('children'):
+                        for sub in cat_pai['children']:
+                            c2_slug = sub['url'].rstrip('/').split('/')[-1]
+                            chave = (c1_slug, c2_slug)
+                            if chave not in seen:
+                                seen.add(chave)
+                                lista_final.append({
+                                    "label": c1_nome,
+                                    "cat1": c1_slug,
+                                    "cat2": c2_slug,
+                                    "nome_sub": sub['name']
+                                })
+                    else:
+                        chave = (c1_slug, c1_slug)
                         if chave not in seen:
                             seen.add(chave)
                             lista_final.append({
                                 "label": c1_nome,
                                 "cat1": c1_slug,
-                                "cat2": c2_slug,
-                                "nome_sub": sub['name']
+                                "cat2": c1_slug,
+                                "nome_sub": cat_pai['name']
                             })
-                else:
-                    chave = (c1_slug, c1_slug)
-                    if chave not in seen:
-                        seen.add(chave)
-                        lista_final.append({
-                            "label": c1_nome,
-                            "cat1": c1_slug,
-                            "cat2": c1_slug,
-                            "nome_sub": cat_pai['name']
-                        })
-            return lista_final
-        except Exception as e:
-            print(f"❌ Erro ao mapear: {e}")
-            return []
+                
+                print(f"   ✅ {len(lista_final)} subcategorias mapeadas")
+                return lista_final
+
+            except Exception as e:
+                print(f"   ❌ Erro na tentativa {tentativa}: {e}")
+
+        print("❌ Todas as tentativas falharam. Abortando.")
+        return []
 
     def buscar_pagina(self, cat1, cat2, after):
         """Busca produtos via GraphQL com paginação por cursor"""
