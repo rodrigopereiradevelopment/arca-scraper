@@ -1,3 +1,4 @@
+
 """
 Sync de UM mercado específico para o Supabase
 Executado em paralelo pelo GitHub Actions
