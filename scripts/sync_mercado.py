@@ -25,7 +25,7 @@ MERCADO_IDS = {
 MERCADO_DISPLAY = {
     "atacadao": "Atacadão",
     "sao_vicente": "São Vicente",
-    "pague_menos": "PagueMenos",   # ← sem espaço, igual ao scraper
+    "pague_menos": "PagueMenos",
     "ponto_novo": "Ponto Novo",
     "imperial": "Imperial",
     "goodbom": "GoodBom",
@@ -57,6 +57,8 @@ CATEGORIA_IDS = {
 
 
 def normalizar_categoria(categoria: str) -> int | None:
+    if not categoria:
+        return None
     cat = categoria.lower().strip()
     for key, value in CATEGORIA_IDS.items():
         if key in cat:
@@ -115,10 +117,12 @@ def sync_mercado(mercado_nome: str):
     inseridos = 0
     ignorados = 0
     erros = 0
+    lote_precos = []
+
+    hoje = datetime.now().strftime("%Y-%m-%d")
 
     for produto in produtos:
         try:
-            # Suporte a preco_atual (novo) e preco (antigo)
             preco = produto.get("preco_atual") or produto.get("preco")
             if not preco:
                 ignorados += 1
@@ -130,7 +134,6 @@ def sync_mercado(mercado_nome: str):
                 continue
 
             categoria_id = normalizar_categoria(produto.get("categoria", ""))
-
             ean = produto.get("ean", "")
             codigo_barras = (
                 ean if isinstance(ean, str)
@@ -149,13 +152,11 @@ def sync_mercado(mercado_nome: str):
             }
 
             produto_id = upsert_produto(supabase, produto_data)
-
             if not produto_id:
                 erros += 1
                 continue
 
-            # Verifica se já existe preço hoje
-            hoje = datetime.now().strftime("%Y-%m-%d")
+            # Verifica duplicata do dia
             ja_existe = supabase.table("precos") \
                 .select("id") \
                 .eq("produto_id", produto_id) \
@@ -168,31 +169,37 @@ def sync_mercado(mercado_nome: str):
                 ignorados += 1
                 continue
 
-            # Data da coleta
             data_coleta = produto.get("data_ultima_coleta") or produto.get("data_extracao")
             if isinstance(data_coleta, datetime):
                 data_coleta_str = data_coleta.isoformat()
             else:
                 data_coleta_str = datetime.now().isoformat()
 
-            # Insere preço
-            preco_result = supabase.table("precos").insert({
-                "preco": preco,
+            lote_precos.append({
+                "preco": float(preco),
                 "data_coleta": data_coleta_str,
                 "produto_id": produto_id,
                 "supermercado_id": supermercado_id,
                 "fonte_dados": "scraping",
                 "promocao": False,
-            }).execute()
+            })
 
-            if preco_result and preco_result.data:
-                inseridos += 1
-            else:
-                erros += 1
+            # Insere quando atingir 250
+            if len(lote_precos) >= 250:
+                supabase.table("precos").insert(lote_precos).execute()
+                inseridos += len(lote_precos)
+                lote_precos = []
+                print(f"   📤 Lote inserido — total até agora: {inseridos}")
 
         except Exception as e:
-            print(f"   ⚠️ Erro: {e}")
+            print(f"   ⚠️ Erro no produto: {e}")
             erros += 1
+
+    # Insere o restante
+    if lote_precos:
+        supabase.table("precos").insert(lote_precos).execute()
+        inseridos += len(lote_precos)
+        print(f"   📤 Último lote inserido: {len(lote_precos)}")
 
     print(f"\n📊 Resultado {mercado_display}:")
     print(f"   ✅ Inseridos:  {inseridos}")
