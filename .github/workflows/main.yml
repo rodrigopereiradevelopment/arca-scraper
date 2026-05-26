@@ -68,3 +68,4 @@ jobs:
         SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       run: |
         python scripts/sync_mercado.py --mercado ${{ matrix.mercado }}
+        
