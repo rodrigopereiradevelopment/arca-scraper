@@ -10,7 +10,8 @@ from pymongo import MongoClient
 from supabase import create_client
 from dotenv import load_dotenv
 
-load_dotenv()
+# Carrega o .env da raiz
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 MERCADO_IDS = {
     "atacadao": 4,
