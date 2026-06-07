@@ -199,18 +199,18 @@ Este projeto foi desenvolvido para fins educacionais como Trabalho de Conclusão
 
 ---
 
-## 👤 Autor
+## 👨‍🎓 Equipe
 
-**Rodrigo Pereira**
-GitHub: @rodrigopereiradevelopment
-Contato: rodrigopereira.development@gmail.com
-Projeto relacionado: arca-ionic (App Mobile)
+TCC — ETEC Pedro Ferreira Alves — Mogi Mirim/SP — 2025/2026
 
-## 🙏 Agradecimentos
+| Nome | Papel |
+|------|-------|
+| Rodrigo Pereira | Desenvolvedor Full Stack |
+| Bruno Henrique Oliveira Capra | Desenvolvedor |
+| Miguel da Silva Bernades | Desenvolvedor |
+| Felix Renato Marques Junior | Desenvolvedor |
 
-- ETEC Pedro Ferreira Alves (TCC)
-- Orientador Prof. Maurício Aparecido das Neves
-- Colegas de turma: Bruno, Miguel, Félix
-- Comunidade open-source pelo suporte!
+**Orientador:** Prof. Maurício Aparecido das Neves
+**Coordenadora:** Prof.ª Simone Andreia de Campos Camargo
 
 📝 **Licença:** MIT
