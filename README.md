@@ -174,6 +174,7 @@ jobs:
 
 - **Schedule:** Segunda e Quinta às 00:00 BRT
 - **Manual:** Botão "Run workflow" no GitHub
+- **Notificação:** Discord webhook em caso de falha
 - **Tempo total:** ~71 minutos
 
 ---
