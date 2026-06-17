@@ -76,17 +76,19 @@ CATEGORIA_PARA_ID: Dict[str, int] = {
     "cafe": 7,
     "café": 7,
     "graos": 7,
-    "mercearia": 7,
+    "mercearia": 9,
     "congelados": 8,
     "congelados-6": 8,
     "bazar": 9,
     "magazine-16": 9,
     "utilidades": 9,
+    "saudaveis organicos": 7,
     # Snacks / Doces
     "biscoitos salgadinhos": 10,
     "doces sobremesas": 10,
     "biscoitos": 10,
     "doces": 10,
+    "lanchonete": 9,
 }
 
 # Mapeamento para códigos numéricos (Ponto Novo)
@@ -145,10 +147,38 @@ def extrair_marca(nome: str, marca_mongo: Optional[str]) -> str:
     return " ".join(partes[:2])
 
 
-def normalizar_categoria(categoria: str, mercado: str) -> Optional[int]:
+def normalizar_categoria(categoria: str, mercado: str, nome: str = "") -> Optional[int]:
     """Normaliza categoria de qualquer mercado para o categoria_id do Supabase"""
     if not categoria:
         return None
+
+    # Override por nome do produto (corrige erros de classificação dos mercados)
+    nome_upper = nome.upper() if nome else ""
+    if nome_upper:
+        # Grãos e Cereais (7)
+        if re.search(r'\b(ARROZ|FEIJÃO|FEIJAO|FARINHA|AÇÚCAR|ACUCAR|CAFÉ|CAFE|MACARRÃO|MACARRAO|FUBÁ|FUBA|LENTILHA|ERVILHA|SOJA|GRÃO DE BICO|GRAO DE BICO)\b', nome_upper):
+            return 7
+        # Laticínios (1)
+        if re.search(r'\b(LEITE|QUEIJO|MANTEIGA|IOGURTE|CREME DE LEITE|REQUEIJÃO|REQUEIJAO|MUÇARELA|MUCARELA|PRATO|MINAS|CHEDDAR|RICOTA|COTAGE)\b', nome_upper):
+            return 1
+        # Carnes e Peixes (2)
+        if re.search(r'\b(CARNE|FRANGO|PEIXE|BOVINO|SUÍNO|SUINO|FILE|FILÉ|PICANHA|ALCATRA|COXÃO|COXAO|PATINHO|MAMINHA|ACÉM|ACEM|PALETA|LINGUIÇA|LINGUICA|SALSICHA|HAMBURGUER|BISTECA|COSTELA|CORDEIRO)\b', nome_upper):
+            return 2
+        # Bebidas (3)
+        if re.search(r'\b(ÁGUA|AGUA|REFRIGERANTE|SUCO|CERVEJA|VINHO|ENERGÉTICO|ENERGETICO|ISOTÔNICO|ISOTONICO|CHÁ|CHA|LEITE|NÉCTAR|NECTAR)\b', nome_upper) and not re.search(r'\b(LEITE EM PÓ|LEITE EM PO|LEITE CONDENSADO|CREME DE LEITE)\b', nome_upper):
+            return 3
+        # Higiene e Limpeza (4)
+        if re.search(r'\b(SABÃO|SABAO|SABONETE|DETERGENTE|DESODORANTE|SHAMPOO|CONDICIONADOR|ESCOVA DENTAL|PASTA DENTAL|CREME DENTAL|FRALDA|ABSORVENTE|PAPEL HIGIÊNICO|PAPEL HIGIENICO|LENÇO|LENCO|ALVEJANTE|ÁGUA SANITARIA|AGUA SANITARIA|DESINFETANTE|INSETICIDA|AMACIANTE|ESPONJA|LIMPADOR|SABÃO EM PÓ|SABAO EM PO|DETERGENTE EM PÓ)\b', nome_upper):
+            return 4
+        # Padaria (5)
+        if re.search(r'\b(PÃO|PAO|PÃO DE QUEIJO|PAO DE QUEIJO|BISNAGA|BAGUETE|BROA|CROISSANT|BOLO|TORRADA|SONHO|PÃO FRANCÊS|PAO FRANCES)\b', nome_upper):
+            return 5
+        # Frutas e Verduras (6)
+        if re.search(r'\b(BANANA|MAÇÃ|MAÇA|LARANJA|UVA|MAMÃO|MAMAO|ABACAXI|MELANCIA|ALFACE|TOMATE|CEBOLA|BATATA|CENOURA|CHUCHU|ABOBRINHA|VAGEM|BRÓCOLIS|BROCOLIS|COUVE|ESPINAFRE|ALHO)\b', nome_upper):
+            return 6
+        # Congelados (8)
+        if re.search(r'\b(SORVETE|PIZZA|LASANHA|NUGGETS|BATATA FRITA|HAMBÚRGUER CONGELADO|HAMBURGUER CONGELADO)\b', nome_upper):
+            return 8
 
     cat_lower = categoria.lower().strip()
 
@@ -239,7 +269,8 @@ def migrate_products_to_supabase(batch_size: int = 100):
                     # 2. Inserir novo produto
                     categoria_id = normalizar_categoria(
                         mongo_product.get("categoria", ""),
-                        mongo_product.get("mercado", "")
+                        mongo_product.get("mercado", ""),
+                        mongo_product.get("nome", "")
                     )
 
                     if categoria_id is None and mongo_product.get("categoria"):

@@ -57,9 +57,24 @@ CATEGORIA_IDS = {
 }
 
 
-def normalizar_categoria(categoria: str) -> int | None:
+def normalizar_categoria(categoria: str, nome: str = "") -> int | None:
     if not categoria:
         return None
+
+    # Override por nome do produto
+    nome_upper = nome.upper() if nome else ""
+    if nome_upper:
+        if re.search(r'\b(ARROZ|FEIJÃO|FEIJAO|FARINHA|AÇÚCAR|ACUCAR|CAFÉ|CAFE|MACARRÃO|MACARRAO|FUBÁ|FUBA|LENTILHA)\b', nome_upper):
+            return 7
+        if re.search(r'\b(LEITE|QUEIJO|MANTEIGA|IOGURTE|MUÇARELA|MUCARELA|RICOTA)\b', nome_upper):
+            return 1
+        if re.search(r'\b(CARNE|FRANGO|PEIXE|PICANHA|LINGUIÇA|LINGUICA|SALSICHA)\b', nome_upper):
+            return 2
+        if re.search(r'\b(SABÃO|SABAO|SABONETE|DETERGENTE|SHAMPOO|CONDICIONADOR|ALVEJANTE|DESINFETANTE|LIMPADOR|FRALDA|PAPEL HIGIÊNICO|PAPEL HIGIENICO)\b', nome_upper):
+            return 4
+        if re.search(r'\b(BANANA|MAÇÃ|MAÇA|LARANJA|TOMATE|CEBOLA|BATATA|ALFACE)\b', nome_upper):
+            return 6
+
     cat = categoria.lower().strip()
     for key, value in CATEGORIA_IDS.items():
         if key in cat:
@@ -134,7 +149,7 @@ def sync_mercado(mercado_nome: str):
                 ignorados += 1
                 continue
 
-            categoria_id = normalizar_categoria(produto.get("categoria", ""))
+            categoria_id = normalizar_categoria(produto.get("categoria", ""), nome)
             ean = produto.get("ean", "")
             codigo_barras = (
                 ean if isinstance(ean, str)
