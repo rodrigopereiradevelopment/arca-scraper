@@ -57,8 +57,18 @@ arca-next (API) → arca-ionic (App Mobile)
 | Métrica | Antes | Depois | Economia |
 |---------|-------|--------|----------|
 | Scraping (sequencial) | 200 min | **56 min** (paralelo) | **-72%** |
-| Sync Supabase | 72 min | **15 min** (paralelo) | **-79%** |
-| **Pipeline total** | **272 min** | **71 min** | **-74%** |
+| Sync Supabase | 72 min | **~12 min** (batch + RPC) | **-83%** |
+| **Pipeline total** | **272 min** | **~68 min** | **-75%** |
+
+### Sync: 27 mil chamadas → 68 chamadas
+
+O `sync_mercado.py` foi refatorado para 3 fases:
+
+1. **Batch upsert** de produtos (`on_conflict="nome"`, lote de 500, ~28 chamadas)
+2. **RPC paginado** `ultimos_precos_mercado()` com `DISTINCT ON (produto_id)` — 1 linha/produto (~14 chamadas)
+3. **Batch insert** de preços (lote de 500) — só insere quando o valor muda
+
+Redução: ~2 min/mercado (antes >10 min).
 
 ### Técnicas utilizadas
 
@@ -67,6 +77,7 @@ arca-next (API) → arca-ionic (App Mobile)
 - **Matrix strategy** no GitHub Actions (6 jobs paralelos)
 - Normalização centralizada na `BaseScraper`
 - Histórico embutido no documento (eliminou coleção separada)
+- Sync batch com RPC `ultimos_precos_mercado()` eliminou paginação de 405k linhas
 
 ### MongoDB: Antes vs Depois
 
@@ -127,8 +138,8 @@ python main.py --mercado ponto_novo
 python main.py --mercado imperial
 python main.py --mercado goodbom
 
-# Sync com Supabase
-python scripts/migrate_to_supabase.py --sync
+# Sync com Supabase (por mercado)
+python scripts/sync_mercado.py --mercado sao_vicente
 ```
 
 ---
@@ -146,8 +157,8 @@ arca-scraper/
 │   ├── imperial.py           # API MobileSim
 │   └── ponto_novo.py         # API MobileSim
 ├── scripts/
-│   ├── migrate_to_supabase.py   # Migração MongoDB → Supabase
-│   └── sync_mercado.py          # Sync paralelo por mercado
+│   ├── migrate_to_supabase.py   # Migração inicial MongoDB → Supabase
+│   └── sync_mercado.py          # Sync incremental (batch + RPC, 3 fases)
 ├── main.py                   # Orquestrador (suporta --mercado)
 ├── requirements.txt
 └── .github/workflows/
@@ -186,6 +197,7 @@ jobs:
 | v1.0 | Sequencial + Silver | ~5h45 | ~250 MB |
 | v2.0 | Paralelismo interno | ~3h20 | ~250 MB |
 | v3.0 | Matrix strategy + Histórico embutido | ~71 min | 18 MB |
+| v3.1 | Sync batch (27k → 68 chamadas) + RPC `ultimos_precos_mercado` | ~68 min | 18 MB |
 
 ---
 
