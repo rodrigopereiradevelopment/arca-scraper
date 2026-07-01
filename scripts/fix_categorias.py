@@ -127,8 +127,8 @@ def normalizar_categoria_por_nome(nome: str) -> int | None:
 
 def main():
     supabase = create_client(
-        os.environ["SUPABASE_URL"],
-        os.environ["SUPABASE_SERVICE_KEY"]
+        os.environ.get("SUPABASE_URL") or os.environ["NEXT_PUBLIC_SUPABASE_URL"],
+        os.environ.get("SUPABASE_SERVICE_KEY") or os.environ["SUPABASE_SERVICE_ROLE_KEY"]
     )
 
     # Load all products with null categoria_id

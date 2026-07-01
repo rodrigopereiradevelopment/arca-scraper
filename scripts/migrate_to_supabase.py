@@ -233,8 +233,8 @@ def migrate_products_to_supabase(batch_size: int = 100):
     collection = mongo_db["produtos"]
 
     supabase: Client = create_client(
-        os.getenv("SUPABASE_URL"),
-        os.getenv("SUPABASE_SERVICE_KEY")
+        os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL"),
+        os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     )
 
     total = collection.count_documents({})
@@ -435,8 +435,8 @@ def sync_updated_prices():
     collection = mongo_db["produtos"]
 
     supabase: Client = create_client(
-        os.getenv("SUPABASE_URL"),
-        os.getenv("SUPABASE_SERVICE_KEY")
+        os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL"),
+        os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     )
 
     ontem = datetime.now() - timedelta(days=1)

@@ -3,8 +3,8 @@ Fix remaining null categoria_id using direct REST API calls.
 """
 import os, re, requests, time
 
-supabase_url = os.environ['SUPABASE_URL']
-service_key = os.environ['SUPABASE_SERVICE_KEY']
+supabase_url = os.environ.get('SUPABASE_URL') or os.environ['NEXT_PUBLIC_SUPABASE_URL']
+service_key = os.environ.get('SUPABASE_SERVICE_KEY') or os.environ['SUPABASE_SERVICE_ROLE_KEY']
 
 headers = {
     'apikey': service_key,

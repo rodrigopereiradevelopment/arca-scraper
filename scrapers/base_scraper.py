@@ -63,6 +63,7 @@ class BaseScraper:
             return "N/A"
         nome = unicodedata.normalize('NFKD', str(nome))
         nome = ''.join(c for c in nome if not unicodedata.combining(c))
+        nome = re.sub(r'[-(),./&]', ' ', nome)
         return re.sub(r'\s+', ' ', nome).strip().upper()
 
     # ──────────────────────────────────────────────

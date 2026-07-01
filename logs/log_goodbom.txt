@@ -1,0 +1,52 @@
+🔄 Sincronizando: GoodBom (ID: 3)
+📦 10519 produtos encontrados no MongoDB
+   📤 Lote inserido — total até agora: 250
+   📤 Lote inserido — total até agora: 500
+   📤 Lote inserido — total até agora: 750
+   📤 Lote inserido — total até agora: 1000
+   📤 Lote inserido — total até agora: 1250
+   📤 Lote inserido — total até agora: 1500
+   📤 Lote inserido — total até agora: 1750
+   📤 Lote inserido — total até agora: 2000
+   📤 Lote inserido — total até agora: 2250
+   📤 Lote inserido — total até agora: 2500
+   📤 Lote inserido — total até agora: 2750
+   📤 Lote inserido — total até agora: 3000
+   📤 Lote inserido — total até agora: 3250
+   📤 Lote inserido — total até agora: 3500
+   📤 Lote inserido — total até agora: 3750
+   📤 Lote inserido — total até agora: 4000
+   📤 Lote inserido — total até agora: 4250
+   📤 Lote inserido — total até agora: 4500
+   📤 Lote inserido — total até agora: 4750
+   📤 Lote inserido — total até agora: 5000
+   📤 Lote inserido — total até agora: 5250
+   📤 Lote inserido — total até agora: 5500
+   📤 Lote inserido — total até agora: 5750
+   📤 Lote inserido — total até agora: 6000
+   📤 Lote inserido — total até agora: 6250
+   📤 Lote inserido — total até agora: 6500
+   📤 Lote inserido — total até agora: 6750
+   📤 Lote inserido — total até agora: 7000
+   📤 Lote inserido — total até agora: 7250
+   📤 Lote inserido — total até agora: 7500
+   📤 Lote inserido — total até agora: 7750
+   📤 Lote inserido — total até agora: 8000
+   📤 Lote inserido — total até agora: 8250
+   📤 Lote inserido — total até agora: 8500
+   📤 Lote inserido — total até agora: 8750
+   📤 Lote inserido — total até agora: 9000
+   📤 Lote inserido — total até agora: 9250
+   📤 Lote inserido — total até agora: 9500
+   📤 Lote inserido — total até agora: 9750
+   ⚠️ Erro no produto: <ConnectionTerminated error_code:0, last_stream_id:19999, additional_data:None>
+   📤 Lote inserido — total até agora: 10000
+   📤 Lote inserido — total até agora: 10250
+   📤 Lote inserido — total até agora: 10500
+   📤 Último lote inserido: 18
+
+📊 Resultado GoodBom:
+   ✅ Inseridos:  10518
+   ⏭️  Ignorados:  0
+   ❌ Erros:      1
+   📦 Total:      10519

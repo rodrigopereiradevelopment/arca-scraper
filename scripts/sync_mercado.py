@@ -265,6 +265,29 @@ def sync_mercado(mercado_nome: str):
     finally:
         mongo_client.close()
 
+    # ═══════════════════════════════════════════════
+    # FASE 6: Equivalências incrementais
+    # ═══════════════════════════════════════════════
+    produtos_sem_equivalente = []
+    for pid in set(mapa_nome_id.values()):
+        try:
+            resp = supabase.rpc("produto_tem_equivalentes", {"p_produto_id": pid}).execute()
+            if resp.data and resp.data[0] == False:
+                produtos_sem_equivalente.append(pid)
+        except Exception:
+            pass
+
+    if produtos_sem_equivalente:
+        print(f"🔗 Gerando equivalências para {len(produtos_sem_equivalente)} novos produtos...")
+        for pid in produtos_sem_equivalente:
+            try:
+                supabase.rpc("backfill_produto", {"p_produto_id": pid}).execute()
+            except Exception as e:
+                print(f"   ⚠️ Erro backfill_produto({pid}): {e}")
+        print(f"   ✅ Equivalências geradas")
+    else:
+        print(f"   ✅ Nenhum produto novo precisa de equivalência")
+
     ignorados = len(produtos_mongo) - inseridos - erros
     print(f"\n📊 Resultado {mercado_display}:")
     print(f"   ✅ Inseridos:  {inseridos}")
